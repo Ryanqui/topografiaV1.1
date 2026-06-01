@@ -1,0 +1,4 @@
+point,angleH,angleV,mode,slope,hp,code,desc
+P-101,15,88.5,zenith,48.5,1.50,LIM,Limite
+P-102,76.3,91.2,zenith,62.0,1.50,ARB,Arbol
+P-103,142.6,89.4,zenith,53.2,1.50,EJE,Eje

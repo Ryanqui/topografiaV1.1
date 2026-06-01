@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TopoPro Web | Calculadora Topográfica Integral</title>
+  <style>
+    :root{
+      --bg:#f5f8fc; --panel:#ffffff; --panel2:#eef5ff; --text:#102033; --muted:#627084;
+      --primary:#0d6efd; --primary2:#0b5ed7; --success:#18a058; --warning:#e0a100; --danger:#d64545;
+      --line:#d9e3ef; --shadow:0 14px 45px rgba(17,45,78,.10); --radius:20px;
+      --chip:#e8f2ff; --grid:rgba(13,110,253,.10); --table:#f8fbff;
+    }
+    [data-theme="dark"]{
+      --bg:#07111f; --panel:#0e1b2b; --panel2:#112845; --text:#ecf5ff; --muted:#9eb0c6;
+      --primary:#4aa3ff; --primary2:#1a7ee8; --success:#40d98d; --warning:#ffd166; --danger:#ff6b6b;
+      --line:#233a54; --shadow:0 18px 50px rgba(0,0,0,.35); --chip:#132f50; --grid:rgba(74,163,255,.13); --table:#0b1625;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,Segoe UI,Roboto,Arial,sans-serif;background:radial-gradient(circle at top left,var(--panel2),var(--bg) 34%,var(--bg));color:var(--text)}
+    button,input,select,textarea{font:inherit}
+    .app{display:grid;grid-template-columns:290px 1fr;min-height:100vh}
+    .sidebar{position:sticky;top:0;height:100vh;padding:18px;background:linear-gradient(180deg,var(--panel),rgba(255,255,255,.6));border-right:1px solid var(--line);box-shadow:var(--shadow);overflow:auto;z-index:5}
+    [data-theme="dark"] .sidebar{background:linear-gradient(180deg,var(--panel),rgba(14,27,43,.72))}
+    .brand{display:flex;gap:12px;align-items:center;margin-bottom:18px}
+    .brand-logo{width:48px;height:48px;border-radius:16px;background:linear-gradient(135deg,var(--primary),#16c784);display:grid;place-items:center;color:white;font-weight:900;font-size:23px;box-shadow:0 8px 25px rgba(13,110,253,.32)}
+    .brand h1{font-size:18px;margin:0;line-height:1.1}.brand p{font-size:12px;color:var(--muted);margin:3px 0 0}
+    .project-box{background:var(--panel2);border:1px solid var(--line);border-radius:18px;padding:12px;margin-bottom:14px}
+    .project-box label,.field label{font-size:12px;font-weight:700;color:var(--muted);display:block;margin-bottom:5px}
+    .project-box input,.project-box select,.field input,.field select,.field textarea{width:100%;padding:10px 11px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);outline:none}
+    .project-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}
+    .nav-title{font-size:12px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.08em;margin:16px 0 8px}
+    .nav button{width:100%;display:flex;align-items:center;gap:10px;padding:11px 12px;border:0;background:transparent;color:var(--text);border-radius:14px;cursor:pointer;text-align:left;margin:3px 0;transition:.18s ease}
+    .nav button:hover,.nav button.active{background:var(--chip);transform:translateX(2px)}
+    .nav .ico{width:28px;height:28px;border-radius:10px;background:var(--panel2);display:grid;place-items:center;color:var(--primary)}
+    .main{padding:22px 26px 40px;max-width:1540px;width:100%;margin:0 auto}
+    .topbar{display:flex;gap:16px;align-items:center;justify-content:space-between;margin-bottom:18px}
+    .topbar h2{margin:0;font-size:28px}.topbar p{margin:5px 0 0;color:var(--muted)}
+    .toolbar{display:flex;flex-wrap:wrap;gap:9px;align-items:center}
+    .btn{border:0;border-radius:13px;padding:10px 13px;background:var(--primary);color:white;cursor:pointer;font-weight:800;box-shadow:0 8px 22px rgba(13,110,253,.20);transition:.17s ease}
+    .btn:hover{transform:translateY(-1px);background:var(--primary2)}
+    .btn.secondary{background:var(--panel);color:var(--text);border:1px solid var(--line);box-shadow:none}.btn.ghost{background:transparent;color:var(--primary);box-shadow:none;border:1px dashed var(--line)}.btn.danger{background:var(--danger)}.btn.success{background:var(--success)}.btn.warn{background:var(--warning);color:#111}
+    .grid{display:grid;gap:16px}.grid.cards{grid-template-columns:repeat(auto-fit,minmax(245px,1fr))}.grid.two{grid-template-columns:1fr 1fr}.grid.three{grid-template-columns:repeat(3,1fr)}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:17px;position:relative;overflow:hidden}
+    .card:before{content:"";position:absolute;inset:auto -40px -70px auto;width:190px;height:190px;background:radial-gradient(circle,var(--grid),transparent 62%);pointer-events:none}
+    .module-card{cursor:pointer;min-height:154px;transition:.18s ease}.module-card:hover{transform:translateY(-4px);border-color:var(--primary)}
+    .module-card .bigico{width:48px;height:48px;border-radius:16px;background:linear-gradient(135deg,var(--chip),var(--panel2));display:grid;place-items:center;color:var(--primary);font-size:25px;margin-bottom:12px}.module-card h3{margin:0 0 7px}.module-card p{color:var(--muted);font-size:13px;margin:0;line-height:1.45}.badge{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border-radius:999px;background:var(--chip);color:var(--primary);font-size:12px;font-weight:800;margin-top:10px}
+    .section-title{display:flex;gap:12px;align-items:center;justify-content:space-between;margin:3px 0 12px}.section-title h3{margin:0;font-size:20px}.section-title small{color:var(--muted)}
+    .form-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(185px,1fr));gap:12px;margin-bottom:14px}.field small{display:block;margin-top:5px;color:var(--muted)}
+    .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:16px;background:var(--panel)}
+    table{border-collapse:separate;border-spacing:0;width:100%;min-width:780px;font-size:13px}th,td{border-bottom:1px solid var(--line);padding:9px 8px;text-align:left;vertical-align:middle}th{position:sticky;top:0;background:var(--table);z-index:1;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.04em}td input,td select{width:100%;padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--panel);color:var(--text)}td.num{text-align:right;font-variant-numeric:tabular-nums}.row-actions{display:flex;gap:4px}.mini{font-size:12px;padding:7px 8px;border-radius:10px}.muted{color:var(--muted)}
+    .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(175px,1fr));gap:12px;margin:14px 0}.kpi{background:var(--panel2);border:1px solid var(--line);padding:13px;border-radius:16px}.kpi span{display:block;color:var(--muted);font-size:12px;font-weight:800;text-transform:uppercase}.kpi strong{display:block;font-size:22px;margin-top:4px}.ok strong{color:var(--success)}.bad strong{color:var(--danger)}.warn strong{color:var(--warning)}
+    .note{border-left:4px solid var(--primary);background:var(--panel2);padding:12px 13px;border-radius:14px;color:var(--text);line-height:1.45}.danger-note{border-left-color:var(--danger)}.success-note{border-left-color:var(--success)}
+    .formula{background:linear-gradient(135deg,var(--panel2),var(--panel));border:1px dashed var(--line);border-radius:16px;padding:12px;line-height:1.55;color:var(--muted);font-family:Consolas,Menlo,monospace;font-size:13px}.hidden{display:none!important}
+    .graph{min-height:330px;display:grid;place-items:center;background:linear-gradient(90deg,var(--grid) 1px,transparent 1px),linear-gradient(var(--grid) 1px,transparent 1px);background-size:28px 28px;border-radius:18px;border:1px solid var(--line);overflow:hidden}.graph svg{width:100%;height:100%;min-height:330px}.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--muted);margin-top:8px}.dot{width:10px;height:10px;border-radius:50%;display:inline-block;background:var(--primary)}
+    .status{position:fixed;right:18px;bottom:18px;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);padding:10px 13px;border-radius:14px;color:var(--muted);font-size:12px;z-index:20;opacity:.95}.toast{position:fixed;right:18px;top:18px;z-index:25;background:var(--panel);border:1px solid var(--line);box-shadow:var(--shadow);padding:12px 14px;border-radius:14px;max-width:360px}
+    .switch{display:flex;gap:8px;align-items:center;background:var(--panel);border:1px solid var(--line);padding:8px 10px;border-radius:999px;color:var(--muted);font-size:13px;font-weight:800}
+    .empty{padding:22px;text-align:center;color:var(--muted)}
+    .footer-note{margin-top:18px;color:var(--muted);font-size:12px;line-height:1.5}.print-only{display:none}
+    @media(max-width:980px){.app{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.main{padding:16px}.topbar{align-items:flex-start;flex-direction:column}.grid.two,.grid.three{grid-template-columns:1fr}.nav{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.nav button{margin:0}.project-actions{grid-template-columns:1fr 1fr 1fr 1fr}}
+    @media(max-width:620px){.topbar h2{font-size:22px}.nav{grid-template-columns:1fr}.project-actions{grid-template-columns:1fr 1fr}.btn{width:100%;}.toolbar{width:100%;}.toolbar .switch{width:100%;justify-content:center}table{font-size:12px;min-width:720px}.card{padding:13px}}
+    @media print{body{background:white;color:#111}.sidebar,.topbar,.toolbar,.row-actions,.no-print,.status{display:none!important}.main{padding:0}.card{box-shadow:none;border:0}.print-only{display:block}.table-wrap{overflow:visible;border:1px solid #ddd}table{min-width:0;font-size:10px}.graph{border:1px solid #ddd;min-height:240px}.graph svg{min-height:240px}}
+  </style>
+</head>
+<body>
+<div class="app" id="app" data-theme="light">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-logo">TP</div><div><h1>TopoPro Web</h1><p>Cálculos topográficos integrales</p></div></div>
+    <div class="project-box">
+      <label>Proyecto activo</label>
+      <select id="projectSelect"></select>
+      <div class="project-actions">
+        <button class="btn secondary mini" data-action="newProject">Nuevo</button>
+        <button class="btn secondary mini" data-action="duplicateProject">Duplicar</button>
+        <button class="btn secondary mini" data-action="backupProject">Respaldo</button>
+        <button class="btn danger mini" data-action="deleteProject">Eliminar</button>
+      </div>
+      <div style="margin-top:9px">
+        <label>Nombre</label><input data-bind="meta.name" placeholder="Nombre del proyecto" />
+      </div>
+      <div style="margin-top:9px">
+        <label>Responsable</label><input data-bind="meta.operator" placeholder="Operador / estudiante" />
+      </div>
+    </div>
+    <div class="nav-title">Módulos</div>
+    <nav class="nav" id="nav"></nav>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <div><h2 id="pageTitle">Dashboard</h2><p id="pageSubtitle">Seleccione un módulo para ingresar, calcular, visualizar y exportar datos.</p></div>
+      <div class="toolbar">
+        <label class="switch"><input type="checkbox" id="themeToggle"> Modo oscuro</label>
+        <button class="btn secondary" data-action="toggleFormulas">Fórmulas</button>
+        <button class="btn secondary" data-action="loadExamples">Cargar ejemplos</button>
+        <button class="btn success" data-action="saveProject">Guardar</button>
+      </div>
+    </div>
+    <div id="content"></div>
+  </main>
+</div>
+<div class="status" id="status">Listo</div>
+<script>
+(function(){
+  'use strict';
+  const STORAGE='topopro_projects_v1';
+  const ACTIVE='topopro_active_project_v1';
+  const $ = (sel,root=document)=>root.querySelector(sel);
+  const $$ = (sel,root=document)=>Array.from(root.querySelectorAll(sel));
+  const modules = [
+    {id:'dashboard', title:'Dashboard', icon:'⌂', desc:'Panel principal y estado del proyecto.'},
+    {id:'compass', title:'Brújula y poligonal', icon:'🧭', desc:'Rumbos, azimuts, proyecciones, cierre y Bowditch.'},
+    {id:'levelSimple', title:'Nivelación simple', icon:'📏', desc:'Altura de instrumento, desnivel y cota nueva.'},
+    {id:'levelCompound', title:'Nivelación compuesta', icon:'⛰️', desc:'Libreta altimétrica, puntos de cambio y verificación.'},
+    {id:'levelClosed', title:'Nivelación cerrada', icon:'🔁', desc:'Error de cierre, tolerancia y cotas corregidas.'},
+    {id:'station', title:'Estación total', icon:'🎯', desc:'Radiación, coordenadas XYZ y nube de puntos.'},
+    {id:'coords', title:'Coordenadas y conversiones', icon:'⊕', desc:'Rumbo/azimut, DMS, distancia, azimut y pendiente.'},
+    {id:'areas', title:'Áreas por coordenadas', icon:'▱', desc:'Área por Gauss, perímetro y croquis del terreno.'},
+    {id:'library', title:'Ejercicios prácticos', icon:'📚', desc:'Casos básicos para cargar en módulos.'}
+  ];
+  const planned = [
+    ['Teodolito','Lecturas directas/inversas, ángulos y resección.'],['Taquimetría','Distancias, desniveles y radiación taquimétrica.'],['Curvas de nivel','Nube de puntos, interpolación básica y mapa de elevación.'],['Perfiles','Longitudinales, transversales, corte y relleno.'],['Volúmenes','Áreas medias, prismoidal y balance de masas.'],['Curvas geométricas','Horizontales y verticales para replanteo.'],['GNSS/GPS','Latitud, longitud, alturas y datum.'],['Libreta digital','Operador, clima, ubicación, croquis y observaciones.']
+  ];
+  let state = {projects:[], activeId:null, active:'dashboard', formulas:true, theme:'light'};
+
+  function uid(){return 'p_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8)}
+  function clamp(n,a,b){return Math.max(a,Math.min(b,n))}
+  function num(v,def=0){const n=parseFloat(String(v??'').replace(',','.')); return Number.isFinite(n)?n:def}
+  function has(v){return v!==undefined && v!==null && String(v).trim()!==''}
+  function rad(d){return d*Math.PI/180}
+  function deg(r){return r*180/Math.PI}
+  function normAz(a){a=num(a); a=((a%360)+360)%360; return Math.abs(a-360)<1e-10?0:a}
+  function fmt(v,d=current().meta.decimals){return Number.isFinite(v)?Number(v).toFixed(d):'—'}
+  function escapeHtml(s){return String(s??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
+
+  function parseDMS(value){
+    if(value===null||value===undefined) return NaN;
+    const s=String(value).trim().replace(/,/g,'.');
+    if(!s) return NaN;
+    if(/^[-+]?\d+(\.\d+)?$/.test(s)) return parseFloat(s);
+    const clean=s.replace(/[°º]/g,' ').replace(/[′']/g,' ').replace(/[″"]/g,' ').replace(/:/g,' ').replace(/\s+/g,' ').trim();
+    const parts=clean.split(' ').map(Number).filter(Number.isFinite);
+    if(!parts.length) return NaN;
+    const sign = /^-/.test(clean)?-1:1;
+    const a=Math.abs(parts[0])+(parts[1]||0)/60+(parts[2]||0)/3600;
+    return sign*a;
+  }
+  function toDMS(angle){
+    const sign=angle<0?'-':''; angle=Math.abs(angle);
+    const g=Math.floor(angle); const mFloat=(angle-g)*60; const m=Math.floor(mFloat); const s=(mFloat-m)*60;
+    return `${sign}${g}° ${m}' ${s.toFixed(2)}\"`;
+  }
+  function rumboToAz(r){
+    if(!has(r)) return NaN;
+    let s=String(r).toUpperCase().replace(/,/g,'.').replace(/\s+/g,' ').trim();
+    const m=s.match(/^([NS])\s*([0-9\.°º'":\s]+)\s*([EW])$/i);
+    if(!m){ const asNum=parseDMS(s); return Number.isFinite(asNum)?normAz(asNum):NaN; }
+    const ns=m[1], ew=m[3], a=parseDMS(m[2]);
+    if(!Number.isFinite(a)) return NaN;
+    if(ns==='N' && ew==='E') return normAz(a);
+    if(ns==='S' && ew==='E') return normAz(180-a);
+    if(ns==='S' && ew==='W') return normAz(180+a);
+    if(ns==='N' && ew==='W') return normAz(360-a);
+    return NaN;
+  }
+  function azToRumbo(az){
+    az=normAz(az);
+    if(az===0) return 'N 0° E';
+    if(az<90) return `N ${toDMS(az)} E`;
+    if(az===90) return 'N 90° E';
+    if(az<180) return `S ${toDMS(180-az)} E`;
+    if(az===180) return 'S 0° E';
+    if(az<270) return `S ${toDMS(az-180)} W`;
+    if(az===270) return 'N 90° W';
+    return `N ${toDMS(360-az)} W`;
+  }
+
+  function defaultProject(name='Proyecto topográfico'){
+    return {id:uid(), meta:{name,operator:'',date:new Date().toISOString().slice(0,10),decimals:3,mode:'student'}, modules:{
+      compass:{type:'closed',startN:1000,startE:1000,method:'bowditch',tolerance:0.005,rows:[
+        {from:'A',to:'B',dist:120,rumbo:'N 45 E',az:''},{from:'B',to:'C',dist:95,rumbo:'S 70 E',az:''},{from:'C',to:'D',dist:110,rumbo:'S 35 W',az:''},{from:'D',to:'A',dist:130,rumbo:'N 55 W',az:''}
+      ],result:null},
+      levelSimple:{benchmark:'BM-1',newPoint:'P-1',knownElev:100,back:1.245,fore:2.015,result:null},
+      levelCompound:{startElev:100,knownEnd:'',rows:[
+        {point:'BM-1',bs:1.500,is:'',fs:'',dist:0,note:'Cota conocida'},
+        {point:'P-1',bs:'',is:0.650,fs:'',dist:20,note:'Vista intermedia'},
+        {point:'PC-1',bs:'',is:'',fs:1.800,dist:40,note:'Punto de cambio'},
+        {point:'PC-1',bs:1.200,is:'',fs:'',dist:40,note:'Nueva estación'},
+        {point:'P-2',bs:'',is:0.720,fs:'',dist:65,note:'Vista intermedia'},
+        {point:'BM-2',bs:'',is:'',fs:1.450,dist:90,note:'Punto final'}
+      ],result:null},
+      levelClosed:{startElev:100,knownEnd:100,method:'distance',tolerance:0.012,rows:[
+        {point:'BM-1',bs:1.320,is:'',fs:'',dist:0,note:'Inicio'},
+        {point:'P-1',bs:'',is:0.880,fs:'',dist:30,note:''},
+        {point:'PC-1',bs:'',is:'',fs:1.760,dist:65,note:'Cambio'},
+        {point:'PC-1',bs:1.100,is:'',fs:'',dist:65,note:'Nueva estación'},
+        {point:'P-2',bs:'',is:0.955,fs:'',dist:105,note:''},
+        {point:'BM-1',bs:'',is:'',fs:1.185,dist:135,note:'Cierre'}
+      ],result:null},
+      station:{stationName:'E-1',x:5000,y:8000,z:120,azBase:35,hi:1.55,rows:[
+        {point:'P-101',angleH:15,angleV:88.5,mode:'zenith',slope:48.5,hp:1.50,code:'LIM',desc:'Límite'},
+        {point:'P-102',angleH:76.3,angleV:91.2,mode:'zenith',slope:62.0,hp:1.50,code:'ARB',desc:'Árbol'},
+        {point:'P-103',angleH:142.6,angleV:89.4,mode:'zenith',slope:53.2,hp:1.50,code:'EJE',desc:'Eje'}
+      ],result:null},
+      coords:{rumbo:'S 35 20 00 E',azimuth:124.667,dms:'12 30 45',decimalAngle:12.5125,x1:1000,y1:1000,x2:1090,y2:1150,radX:1000,radY:1000,radAz:60,radDist:80,elev1:100,elev2:108,distSlope:160,result:null},
+      areas:{rows:[{name:'A',x:1000,y:1000,z:0},{name:'B',x:1120,y:1020,z:0},{name:'C',x:1110,y:1115,z:0},{name:'D',x:980,y:1100,z:0}],result:null}
+    }};
+  }
+  function current(){return state.projects.find(p=>p.id===state.activeId) || state.projects[0]}
+  function load(){
+    try{state.projects=JSON.parse(localStorage.getItem(STORAGE)||'[]')}catch(e){state.projects=[]}
+    if(!Array.isArray(state.projects)||!state.projects.length){state.projects=[defaultProject('Proyecto de ejemplo')];}
+    state.activeId=localStorage.getItem(ACTIVE)||state.projects[0].id;
+    if(!current()) state.activeId=state.projects[0].id;
+    state.theme=localStorage.getItem('topopro_theme')||'light';
+    state.formulas=localStorage.getItem('topopro_formulas')!=='false';
+  }
+  function save(){localStorage.setItem(STORAGE,JSON.stringify(state.projects));localStorage.setItem(ACTIVE,state.activeId);setStatus('Guardado local: '+new Date().toLocaleTimeString())}
+  function toast(msg,type='info'){const old=$('.toast'); if(old) old.remove(); const d=document.createElement('div'); d.className='toast'; d.innerHTML=`<strong>${type==='error'?'Atención':type==='ok'?'Correcto':'Aviso'}</strong><br>${msg}`; document.body.appendChild(d); setTimeout(()=>d.remove(),4200)}
+  function setStatus(msg){$('#status').textContent=msg}
+
+  function render(){
+    document.getElementById('app').setAttribute('data-theme',state.theme);
+    $('#themeToggle').checked=state.theme==='dark';
+    renderProjectSelect(); renderNav(); renderBindings(); renderContent();
+  }
+  function renderProjectSelect(){
+    const sel=$('#projectSelect'); sel.innerHTML=state.projects.map(p=>`<option value="${p.id}" ${p.id===state.activeId?'selected':''}>${escapeHtml(p.meta.name||'Sin nombre')}</option>`).join('');
+  }
+  function renderNav(){
+    $('#nav').innerHTML=modules.map(m=>`<button data-module="${m.id}" class="${state.active===m.id?'active':''}"><span class="ico">${m.icon}</span><span>${m.title}</span></button>`).join('');
+  }
+  function renderBindings(){
+    const p=current(); if(!p) return;
+    $$('[data-bind]').forEach(el=>{const path=el.dataset.bind.split('.'); let v=p; for(const k of path) v=v?.[k]; if(document.activeElement!==el) el.value=v??'';});
+  }
+  function setPage(title,sub){$('#pageTitle').textContent=title;$('#pageSubtitle').textContent=sub;}
+  function renderContent(){
+    const p=current();
+    const m=modules.find(x=>x.id===state.active)||modules[0]; setPage(m.title,m.desc);
+    if(state.active==='dashboard') return renderDashboard();
+    if(state.active==='compass') return renderCompass();
+    if(state.active==='levelSimple') return renderLevelSimple();
+    if(state.active==='levelCompound') return renderLevelCompound();
+    if(state.active==='levelClosed') return renderLevelClosed();
+    if(state.active==='station') return renderStation();
+    if(state.active==='coords') return renderCoords();
+    if(state.active==='areas') return renderAreas();
+    if(state.active==='library') return renderLibrary();
+  }
+
+  function moduleHeader(id,title,desc,buttons=true){
+    return `<div class="section-title"><div><h3>${title}</h3><small>${desc}</small></div>${buttons?`<div class="toolbar no-print">
+      <button class="btn" data-action="calc" data-calc="${id}">Calcular</button>
+      <button class="btn secondary" data-action="addRow" data-target="${id}">Agregar fila</button>
+      <label class="btn secondary" style="display:inline-block;cursor:pointer">Importar<input class="hidden" type="file" accept=".csv,.txt,.json,.xlsx" data-import="${id}"></label>
+      <button class="btn secondary" data-action="exportCSV" data-target="${id}">CSV</button>
+      <button class="btn secondary" data-action="exportXLS" data-target="${id}">Excel</button>
+      <button class="btn secondary" data-action="exportJSON" data-target="${id}">JSON</button>
+      <button class="btn secondary" data-action="printReport" data-target="${id}">PDF/Imprimir</button>
+    </div>`:''}</div>`;
+  }
+  function formulaBlock(html){return `<div class="formula ${state.formulas?'':'hidden'}">${html}</div>`}
+
+  function renderDashboard(){
+    const p=current();
+    const content = `
+      <div class="grid cards">
+        ${modules.filter(m=>m.id!=='dashboard').map(m=>`<div class="card module-card" data-module="${m.id}"><div class="bigico">${m.icon}</div><h3>${m.title}</h3><p>${m.desc}</p><span class="badge">Abrir módulo</span></div>`).join('')}
+      </div>
+      <div class="grid two" style="margin-top:16px">
+        <div class="card"><div class="section-title"><h3>Estado del proyecto</h3><small>Guardado local automático</small></div>
+          <div class="kpis"><div class="kpi"><span>Proyecto</span><strong>${escapeHtml(p.meta.name)}</strong></div><div class="kpi"><span>Decimales</span><strong>${p.meta.decimals}</strong></div><div class="kpi"><span>Modo</span><strong>${p.meta.mode==='professional'?'Profesional':'Estudiante'}</strong></div></div>
+          <div class="form-row"><div class="field"><label>Decimales</label><input type="number" min="0" max="8" data-bind="meta.decimals"></div><div class="field"><label>Modo de uso</label><select data-bind="meta.mode"><option value="student">Estudiante</option><option value="professional">Profesional</option></select></div><div class="field"><label>Fecha</label><input type="date" data-bind="meta.date"></div></div>
+          <p class="note">Los datos se guardan en el navegador mediante LocalStorage. Puede descargar un respaldo JSON del proyecto y volver a cargarlo como respaldo manual.</p>
+        </div>
+        <div class="card"><div class="section-title"><h3>Módulos listos y ampliables</h3><small>Arquitectura modular</small></div>
+          <p class="muted">Esta versión funcional prioriza dashboard, brújula/poligonal, nivelación simple, compuesta, cerrada, estación total, conversiones y áreas. Los siguientes módulos quedan estructurados para integrarse:</p>
+          <div class="grid two" style="margin-top:10px">${planned.map(x=>`<div class="kpi"><span>${x[0]}</span><small>${x[1]}</small></div>`).join('')}</div>
+        </div>
+      </div>`;
+    $('#content').innerHTML=content;
+  }
+
+  function renderCompass(){
+    const d=current().modules.compass; const res=calculateCompass(false);
+    $('#content').innerHTML=`<div class="card">${moduleHeader('compass','Levantamiento con brújula / poligonal','Ingrese distancias, rumbos o azimuts. Calcula proyecciones, cierre, precisión y ajuste.')}
+      <div class="form-row">
+        <div class="field"><label>Tipo</label><select data-module-field="compass.type"><option value="closed" ${d.type==='closed'?'selected':''}>Poligonal cerrada</option><option value="open" ${d.type==='open'?'selected':''}>Poligonal abierta</option></select></div>
+        <div class="field"><label>Norte inicial</label><input type="number" data-module-field="compass.startN" value="${d.startN}"></div>
+        <div class="field"><label>Este inicial</label><input type="number" data-module-field="compass.startE" value="${d.startE}"></div>
+        <div class="field"><label>Método de ajuste</label><select data-module-field="compass.method"><option value="bowditch" ${d.method==='bowditch'?'selected':''}>Bowditch</option><option value="transit" ${d.method==='transit'?'selected':''}>Tránsito</option></select></div>
+      </div>
+      ${formulaBlock('Azimut desde rumbo cuadrantal → ΔN = D·cos(Az), ΔE = D·sin(Az).<br>Error lineal = √(ΣΔN² + ΣΔE²). Bowditch: CΔNᵢ = -ΣΔN·Dᵢ/ΣD; CΔEᵢ = -ΣΔE·Dᵢ/ΣD.')}
+      ${tableCompass(d.rows,res.rows)}
+      ${kpisCompass(res)}
+      <div class="grid two"><div><h3>Croquis de poligonal</h3><div class="graph" id="graphCompass">${plotPoints(res.pointsAdjusted.length?res.pointsAdjusted:res.pointsRaw,{closed:d.type==='closed',labels:true})}</div><div class="legend"><span><span class="dot"></span> Coordenadas corregidas</span><span>Use Exportar SVG desde resultados.</span></div></div><div><h3>Guía paso a paso</h3>${stepsCompass(res)}</div></div>
+    </div>`;
+  }
+  function tableCompass(rows,resRows){
+    return `<div class="table-wrap"><table><thead><tr><th>Est.</th><th>A</th><th>Distancia</th><th>Rumbo</th><th>Azimut opc.</th><th>Az calc.</th><th>ΔN</th><th>ΔE</th><th>N corr.</th><th>E corr.</th><th>Acciones</th></tr></thead><tbody>
+      ${rows.map((r,i)=>`<tr><td><input data-cell="compass.rows.${i}.from" value="${escapeHtml(r.from)}"></td><td><input data-cell="compass.rows.${i}.to" value="${escapeHtml(r.to)}"></td><td><input type="number" data-cell="compass.rows.${i}.dist" value="${r.dist}"></td><td><input data-cell="compass.rows.${i}.rumbo" value="${escapeHtml(r.rumbo)}"></td><td><input data-cell="compass.rows.${i}.az" value="${escapeHtml(r.az)}"></td><td class="num">${fmt(resRows[i]?.az)}</td><td class="num">${fmt(resRows[i]?.dN)}</td><td class="num">${fmt(resRows[i]?.dE)}</td><td class="num">${fmt(resRows[i]?.adjN)}</td><td class="num">${fmt(resRows[i]?.adjE)}</td><td><div class="row-actions"><button class="btn secondary mini" data-action="insertRow" data-target="compass" data-index="${i}">+</button><button class="btn secondary mini" data-action="dupRow" data-target="compass" data-index="${i}">⧉</button><button class="btn danger mini" data-action="delRow" data-target="compass" data-index="${i}">×</button></div></td></tr>`).join('')}
+    </tbody></table></div>`;
+  }
+  function calculateCompass(store=true){
+    const d=current().modules.compass; const rows=[]; let sumN=0,sumE=0,total=0;
+    for(const r of d.rows){
+      const dist=num(r.dist,NaN); const az=has(r.az)?parseDMS(r.az):rumboToAz(r.rumbo);
+      const valid=Number.isFinite(dist)&&dist>=0&&Number.isFinite(az);
+      const dN=valid?dist*Math.cos(rad(az)):NaN; const dE=valid?dist*Math.sin(rad(az)):NaN;
+      if(valid){sumN+=dN;sumE+=dE;total+=dist}
+      rows.push({...r,dist,az,dN,dE,cN:0,cE:0,adjDN:dN,adjDE:dE,adjN:NaN,adjE:NaN,valid});
+    }
+    const closure=Math.hypot(sumN,sumE); const precision=closure>0?total/closure:Infinity;
+    const sumAbsN=rows.reduce((a,r)=>a+(r.valid?Math.abs(r.dN):0),0); const sumAbsE=rows.reduce((a,r)=>a+(r.valid?Math.abs(r.dE):0),0);
+    if(d.type==='closed'){
+      for(const r of rows){ if(!r.valid) continue; if(d.method==='transit'){
+          r.cN=sumAbsN? -sumN*Math.abs(r.dN)/sumAbsN:0; r.cE=sumAbsE? -sumE*Math.abs(r.dE)/sumAbsE:0;
+        }else{ r.cN=total? -sumN*r.dist/total:0; r.cE=total? -sumE*r.dist/total:0; }
+        r.adjDN=r.dN+r.cN; r.adjDE=r.dE+r.cE;
+      }
+    }
+    let n=num(d.startN), e=num(d.startE); const raw=[{name:rows[0]?.from||'Inicio',n,e}]; for(const r of rows){ if(r.valid){ n+=r.dN; e+=r.dE; raw.push({name:r.to,n,e}); }}
+    let an=num(d.startN), ae=num(d.startE); const adj=[{name:rows[0]?.from||'Inicio',n:an,e:ae}]; for(const r of rows){ if(r.valid){ an+=r.adjDN; ae+=r.adjDE; r.adjN=an; r.adjE=ae; adj.push({name:r.to,n:an,e:ae}); }}
+    const result={rows,total,sumN,sumE,closure,precision,pointsRaw:raw,pointsAdjusted:adj,warnings:rows.filter(r=>!r.valid).length};
+    if(store){d.result=result; save(); renderCompass(); toast('Brújula/poligonal calculada.','ok')}
+    return result;
+  }
+  function kpisCompass(r){return `<div class="kpis"><div class="kpi"><span>Longitud total</span><strong>${fmt(r.total)} m</strong></div><div class="kpi"><span>Σ ΔN</span><strong>${fmt(r.sumN)}</strong></div><div class="kpi"><span>Σ ΔE</span><strong>${fmt(r.sumE)}</strong></div><div class="kpi ${r.closure<1?'ok':r.closure<5?'warn':'bad'}"><span>Error lineal</span><strong>${fmt(r.closure)} m</strong></div><div class="kpi"><span>Precisión relativa</span><strong>1:${Number.isFinite(r.precision)?fmt(r.precision,0):'∞'}</strong></div></div>`}
+  function stepsCompass(r){return `<ol class="note"><li>Se convierte cada rumbo a azimut o se usa el azimut ingresado.</li><li>Se calculan proyecciones norte y este por trigonometría.</li><li>Se acumulan coordenadas desde el punto inicial.</li><li>En poligonal cerrada, el error de cierre se distribuye por Bowditch o tránsito.</li><li>El croquis se genera con las coordenadas corregidas.</li></ol>${r.warnings?`<p class="note danger-note">Hay ${r.warnings} fila(s) con datos incompletos o ángulos no válidos.</p>`:''}`}
+
+  function renderLevelSimple(){
+    const d=current().modules.levelSimple; const r=calculateLevelSimple(false);
+    $('#content').innerHTML=`<div class="card">${moduleHeader('levelSimple','Nivelación simple','Cálculo por altura de instrumento con una vista atrás y una vista adelante.',false)}
+      <div class="toolbar no-print" style="margin-bottom:12px"><button class="btn" data-action="calc" data-calc="levelSimple">Calcular</button><button class="btn secondary" data-action="exportCSV" data-target="levelSimple">CSV</button><button class="btn secondary" data-action="exportJSON" data-target="levelSimple">JSON</button><button class="btn secondary" data-action="printReport" data-target="levelSimple">PDF/Imprimir</button></div>
+      <div class="form-row"><div class="field"><label>BM / punto conocido</label><input data-module-field="levelSimple.benchmark" value="${escapeHtml(d.benchmark)}"></div><div class="field"><label>Punto nuevo</label><input data-module-field="levelSimple.newPoint" value="${escapeHtml(d.newPoint)}"></div><div class="field"><label>Cota conocida</label><input type="number" data-module-field="levelSimple.knownElev" value="${d.knownElev}"></div><div class="field"><label>Vista atrás</label><input type="number" data-module-field="levelSimple.back" value="${d.back}"></div><div class="field"><label>Vista adelante</label><input type="number" data-module-field="levelSimple.fore" value="${d.fore}"></div></div>
+      ${formulaBlock('Altura de instrumento: HI = Cota conocida + Vista atrás.<br>Cota del punto nuevo = HI - Vista adelante.<br>Desnivel = Vista atrás - Vista adelante.')}
+      <div class="kpis"><div class="kpi"><span>Altura de instrumento</span><strong>${fmt(r.hi)} m</strong></div><div class="kpi"><span>Cota nueva</span><strong>${fmt(r.newElev)} m</strong></div><div class="kpi ${r.delta>=0?'ok':'warn'}"><span>Desnivel</span><strong>${fmt(r.delta)} m</strong></div></div>
+      <div class="note"><strong>Procedimiento:</strong> se parte de la cota conocida ${fmt(num(d.knownElev))} m, se suma la vista atrás ${fmt(num(d.back))} m para obtener HI y se resta la vista adelante ${fmt(num(d.fore))} m para obtener la cota de ${escapeHtml(d.newPoint)}.</div>
+    </div>`;
+  }
+  function calculateLevelSimple(store=true){const d=current().modules.levelSimple; const hi=num(d.knownElev)+num(d.back); const newElev=hi-num(d.fore); const delta=num(d.back)-num(d.fore); const result={hi,newElev,delta,rows:[{Punto:d.benchmark,Cota:num(d.knownElev),Lectura:'VA '+d.back},{Punto:d.newPoint,Cota:newElev,Lectura:'VF '+d.fore}]}; if(store){d.result=result;save();renderLevelSimple();toast('Nivelación simple calculada.','ok')} return result;}
+
+  function renderLevelCompound(){
+    const d=current().modules.levelCompound; const r=calculateLevelCompound(false);
+    $('#content').innerHTML=`<div class="card">${moduleHeader('levelCompound','Nivelación compuesta','Registre vistas atrás, intermedias y adelante por estaciones. Permite editar, insertar, duplicar y borrar filas.')}
+      <div class="form-row"><div class="field"><label>Cota inicial</label><input type="number" data-module-field="levelCompound.startElev" value="${d.startElev}"></div><div class="field"><label>Cota final conocida opcional</label><input type="number" data-module-field="levelCompound.knownEnd" value="${d.knownEnd}"><small>Si se deja vacío, no se calcula error de cierre.</small></div></div>
+      ${formulaBlock('Por altura de instrumento: HI = Cota punto + VA. Cota punto observado = HI - lectura. Verificación: ΣVA - ΣVF = Cota final calculada - Cota inicial.')}
+      ${tableLevel('levelCompound',d.rows,r.rows,false)}
+      ${kpisLevelCompound(r)}<div class="note">${r.message}</div>
+    </div>`;
+  }
+  function tableLevel(key,rows,resRows,closed){
+    return `<div class="table-wrap"><table><thead><tr><th>Punto</th><th>VA</th><th>VI</th><th>VF</th><th>Dist. acum.</th><th>Nota</th><th>HI</th><th>Cota calc.</th>${closed?'<th>Corrección</th><th>Cota corr.</th>':''}<th>Acciones</th></tr></thead><tbody>${rows.map((r,i)=>`<tr><td><input data-cell="${key}.rows.${i}.point" value="${escapeHtml(r.point)}"></td><td><input type="number" data-cell="${key}.rows.${i}.bs" value="${r.bs}"></td><td><input type="number" data-cell="${key}.rows.${i}.is" value="${r.is}"></td><td><input type="number" data-cell="${key}.rows.${i}.fs" value="${r.fs}"></td><td><input type="number" data-cell="${key}.rows.${i}.dist" value="${r.dist}"></td><td><input data-cell="${key}.rows.${i}.note" value="${escapeHtml(r.note)}"></td><td class="num">${fmt(resRows[i]?.hi)}</td><td class="num">${fmt(resRows[i]?.elev)}</td>${closed?`<td class="num">${fmt(resRows[i]?.corr)}</td><td class="num">${fmt(resRows[i]?.elevCorr)}</td>`:''}<td><div class="row-actions"><button class="btn secondary mini" data-action="insertRow" data-target="${key}" data-index="${i}">+</button><button class="btn secondary mini" data-action="dupRow" data-target="${key}" data-index="${i}">⧉</button><button class="btn danger mini" data-action="delRow" data-target="${key}" data-index="${i}">×</button></div></td></tr>`).join('')}</tbody></table></div>`;
+  }
+  function calculateLevelCompound(store=true){
+    const d=current().modules.levelCompound; let elev=num(d.startElev), hi=NaN, lastElev=elev, sumBS=0,sumFS=0; const rows=[];
+    d.rows.forEach((row,i)=>{
+      let rr={...row,elev:NaN,hi:NaN};
+      if(i===0){rr.elev=elev; lastElev=elev;}
+      if(has(row.bs)){ if(!Number.isFinite(rr.elev)) rr.elev=lastElev; hi=rr.elev+num(row.bs); rr.hi=hi; sumBS+=num(row.bs); }
+      if(has(row.is)||has(row.fs)){ const reading=has(row.is)?num(row.is):num(row.fs); if(Number.isFinite(hi)){ rr.elev=hi-reading; lastElev=rr.elev;} if(has(row.fs)) sumFS+=num(row.fs);}
+      if(!Number.isFinite(rr.hi)&&Number.isFinite(hi)) rr.hi=hi;
+      rows.push(rr);
+    });
+    const finalElev=[...rows].reverse().find(x=>Number.isFinite(x.elev))?.elev ?? elev; const diff=sumBS-sumFS; const delta=finalElev-num(d.startElev); const known=has(d.knownEnd)?num(d.knownEnd):NaN; const error=Number.isFinite(known)?finalElev-known:NaN;
+    const message=Number.isFinite(error)?`Cota final calculada: ${fmt(finalElev)} m. Cota final conocida: ${fmt(known)} m. Error: ${fmt(error)} m.`:`Cota final calculada: ${fmt(finalElev)} m. No se ingresó cota final conocida; se reporta como nivelación sin cierre conocido.`;
+    const result={rows,sumBS,sumFS,diff,delta,finalElev,error,message}; if(store){d.result=result;save();renderLevelCompound();toast('Nivelación compuesta calculada.','ok')} return result;
+  }
+  function kpisLevelCompound(r){return `<div class="kpis"><div class="kpi"><span>Σ VA</span><strong>${fmt(r.sumBS)}</strong></div><div class="kpi"><span>Σ VF</span><strong>${fmt(r.sumFS)}</strong></div><div class="kpi"><span>ΣVA - ΣVF</span><strong>${fmt(r.diff)}</strong></div><div class="kpi"><span>Δ cotas</span><strong>${fmt(r.delta)}</strong></div><div class="kpi ${Number.isFinite(r.error)?(Math.abs(r.error)<0.02?'ok':'warn'):''}"><span>Error</span><strong>${Number.isFinite(r.error)?fmt(r.error):'—'}</strong></div></div>`}
+
+  function renderLevelClosed(){
+    const d=current().modules.levelClosed; const r=calculateLevelClosed(false);
+    $('#content').innerHTML=`<div class="card">${moduleHeader('levelClosed','Nivelación cerrada','Calcula error altimétrico, verifica tolerancia y corrige cotas por distancia o número de puntos.')}
+      <div class="form-row"><div class="field"><label>Cota inicial</label><input type="number" data-module-field="levelClosed.startElev" value="${d.startElev}"></div><div class="field"><label>Cota final conocida</label><input type="number" data-module-field="levelClosed.knownEnd" value="${d.knownEnd}"></div><div class="field"><label>Tolerancia ± m</label><input type="number" step="0.001" data-module-field="levelClosed.tolerance" value="${d.tolerance}"></div><div class="field"><label>Corrección</label><select data-module-field="levelClosed.method"><option value="distance" ${d.method==='distance'?'selected':''}>Proporcional a distancia</option><option value="stations" ${d.method==='stations'?'selected':''}>Proporcional a estaciones</option></select></div></div>
+      ${formulaBlock('Error de cierre: e = Cota final calculada - Cota final conocida.<br>Corrección por distancia: Cᵢ = -e·Distᵢ/Dist total. Corrección por estaciones: Cᵢ = -e·i/(n-1).')}
+      ${tableLevel('levelClosed',d.rows,r.rows,true)}
+      ${kpisClosed(r)}
+      <div class="grid two"><div><h3>Perfil longitudinal</h3><div class="graph">${plotProfile(r.rows)}</div></div><div><h3>Diagnóstico</h3><div class="note ${Math.abs(r.error)<=num(d.tolerance)?'success-note':'danger-note'}">${r.message}</div></div></div>
+    </div>`;
+  }
+  function calculateLevelClosed(store=true){
+    const d=current().modules.levelClosed; const base={startElev:d.startElev,knownEnd:d.knownEnd,rows:d.rows};
+    const tmp={modules:{levelCompound:{startElev:d.startElev,knownEnd:d.knownEnd,rows:d.rows}}};
+    const old=current().modules.levelCompound; current().modules.levelCompound=tmp.modules.levelCompound; const lc=calculateLevelCompound(false); current().modules.levelCompound=old;
+    const totalDist=Math.max(...d.rows.map(r=>num(r.dist,0)),0); const error=lc.finalElev-num(d.knownEnd); const n=lc.rows.length; const rows=lc.rows.map((r,i)=>{let factor=d.method==='stations'?(n>1?i/(n-1):0):(totalDist?num(r.dist)/totalDist:0); const corr=-error*factor; return {...r,corr,elevCorr:Number.isFinite(r.elev)?r.elev+corr:NaN};});
+    const ok=Math.abs(error)<=num(d.tolerance); const message=`Error de cierre: ${fmt(error)} m. Tolerancia configurada: ±${fmt(num(d.tolerance))} m. Resultado: ${ok?'dentro de tolerancia':'fuera de tolerancia, revise lecturas o repita medición'}.`;
+    const result={...lc,rows,totalDist,error,ok,message}; if(store){d.result=result;save();renderLevelClosed();toast('Nivelación cerrada calculada.','ok')} return result;
+  }
+  function kpisClosed(r){return `<div class="kpis"><div class="kpi"><span>Distancia total</span><strong>${fmt(r.totalDist)} m</strong></div><div class="kpi"><span>Cota final calc.</span><strong>${fmt(r.finalElev)} m</strong></div><div class="kpi ${r.ok?'ok':'bad'}"><span>Error cierre</span><strong>${fmt(r.error)} m</strong></div><div class="kpi ${r.ok?'ok':'bad'}"><span>Semáforo</span><strong>${r.ok?'Verde':'Rojo'}</strong></div></div>`}
+
+  function renderStation(){
+    const d=current().modules.station; const r=calculateStation(false);
+    $('#content').innerHTML=`<div class="card">${moduleHeader('station','Estación total','Calcula coordenadas radiadas a partir de estación, azimut base, ángulo horizontal, ángulo vertical/cenital y distancia inclinada.')}
+      <div class="form-row"><div class="field"><label>Estación ocupada</label><input data-module-field="station.stationName" value="${escapeHtml(d.stationName)}"></div><div class="field"><label>X/E estación</label><input type="number" data-module-field="station.x" value="${d.x}"></div><div class="field"><label>Y/N estación</label><input type="number" data-module-field="station.y" value="${d.y}"></div><div class="field"><label>Z estación</label><input type="number" data-module-field="station.z" value="${d.z}"></div><div class="field"><label>Azimut base</label><input data-module-field="station.azBase" value="${d.azBase}"></div><div class="field"><label>Altura instrumento</label><input type="number" data-module-field="station.hi" value="${d.hi}"></div></div>
+      ${formulaBlock('Az punto = Az base + Ángulo horizontal.<br>Si ángulo cenital Z: DH = DI·sin(Z), ΔZ = DI·cos(Z) + HI - HP.<br>Coordenadas: X = X₀ + DH·sin(Az), Y = Y₀ + DH·cos(Az), Z = Z₀ + ΔZ.')}
+      <div class="table-wrap"><table><thead><tr><th>Punto</th><th>AH</th><th>AV/Z</th><th>Modo</th><th>DI</th><th>HP</th><th>Código</th><th>Descripción</th><th>Az</th><th>DH</th><th>X</th><th>Y</th><th>Z</th><th>Acciones</th></tr></thead><tbody>${d.rows.map((row,i)=>`<tr><td><input data-cell="station.rows.${i}.point" value="${escapeHtml(row.point)}"></td><td><input data-cell="station.rows.${i}.angleH" value="${row.angleH}"></td><td><input data-cell="station.rows.${i}.angleV" value="${row.angleV}"></td><td><select data-cell="station.rows.${i}.mode"><option value="zenith" ${row.mode==='zenith'?'selected':''}>Cenital</option><option value="vertical" ${row.mode==='vertical'?'selected':''}>Vertical</option></select></td><td><input type="number" data-cell="station.rows.${i}.slope" value="${row.slope}"></td><td><input type="number" data-cell="station.rows.${i}.hp" value="${row.hp}"></td><td><input data-cell="station.rows.${i}.code" value="${escapeHtml(row.code)}"></td><td><input data-cell="station.rows.${i}.desc" value="${escapeHtml(row.desc)}"></td><td class="num">${fmt(r.rows[i]?.az)}</td><td class="num">${fmt(r.rows[i]?.h)}</td><td class="num">${fmt(r.rows[i]?.x)}</td><td class="num">${fmt(r.rows[i]?.y)}</td><td class="num">${fmt(r.rows[i]?.z)}</td><td><div class="row-actions"><button class="btn secondary mini" data-action="insertRow" data-target="station" data-index="${i}">+</button><button class="btn secondary mini" data-action="dupRow" data-target="station" data-index="${i}">⧉</button><button class="btn danger mini" data-action="delRow" data-target="station" data-index="${i}">×</button></div></td></tr>`).join('')}</tbody></table></div>
+      <div class="kpis"><div class="kpi"><span>Puntos calculados</span><strong>${r.rows.filter(x=>x.valid).length}</strong></div><div class="kpi"><span>Estación</span><strong>${escapeHtml(d.stationName)}</strong></div><div class="kpi"><span>Azimut base</span><strong>${fmt(parseDMS(d.azBase))}°</strong></div></div>
+      <div class="graph">${plotXY([{name:d.stationName,x:num(d.x),y:num(d.y),station:true},...r.rows.filter(x=>x.valid).map(x=>({name:x.point,x:x.x,y:x.y}))])}</div>
+    </div>`;
+  }
+  function calculateStation(store=true){
+    const d=current().modules.station; const azBase=parseDMS(d.azBase); const sx=num(d.x), sy=num(d.y), sz=num(d.z), hi=num(d.hi); const rows=d.rows.map(row=>{
+      const ah=parseDMS(row.angleH), av=parseDMS(row.angleV), di=num(row.slope,NaN), hp=num(row.hp); const az=normAz(azBase+ah); let h=NaN,dz=NaN;
+      if(Number.isFinite(av)&&Number.isFinite(di)){ if(row.mode==='vertical'){h=di*Math.cos(rad(av)); dz=di*Math.sin(rad(av))+hi-hp;}else{h=di*Math.sin(rad(av)); dz=di*Math.cos(rad(av))+hi-hp;} }
+      const x=sx+h*Math.sin(rad(az)), y=sy+h*Math.cos(rad(az)), z=sz+dz; const valid=[az,h,x,y,z].every(Number.isFinite); return {...row,az,h,dz,x,y,z,valid};
+    }); const result={rows}; if(store){d.result=result;save();renderStation();toast('Estación total calculada.','ok')} return result;
+  }
+
+  function renderCoords(){
+    const d=current().modules.coords; const r=calculateCoords(false);
+    $('#content').innerHTML=`<div class="card">${moduleHeader('coords','Coordenadas y conversiones','Herramientas rápidas para transformar ángulos, calcular azimut, distancia, radiación y pendiente.',false)}
+      <div class="toolbar no-print" style="margin-bottom:12px"><button class="btn" data-action="calc" data-calc="coords">Calcular</button><button class="btn secondary" data-action="exportJSON" data-target="coords">JSON</button><button class="btn secondary" data-action="printReport" data-target="coords">PDF/Imprimir</button></div>
+      ${formulaBlock('Azimut entre dos puntos: Az = atan2(ΔE, ΔN). Distancia = √(ΔE² + ΔN²). Radiación: E = E₀ + D·sin(Az), N = N₀ + D·cos(Az). Pendiente % = Δcota / distancia · 100.')}
+      <div class="grid two"><div class="card"><h3>Ángulos</h3><div class="form-row"><div class="field"><label>Rumbo</label><input data-module-field="coords.rumbo" value="${escapeHtml(d.rumbo)}"></div><div class="field"><label>Azimut</label><input data-module-field="coords.azimuth" value="${d.azimuth}"></div><div class="field"><label>DMS</label><input data-module-field="coords.dms" value="${escapeHtml(d.dms)}"></div><div class="field"><label>Decimal</label><input data-module-field="coords.decimalAngle" value="${d.decimalAngle}"></div></div><div class="kpis"><div class="kpi"><span>Rumbo → Azimut</span><strong>${fmt(r.azFromRumbo)}°</strong></div><div class="kpi"><span>Azimut → Rumbo</span><strong style="font-size:15px">${escapeHtml(r.rumboFromAz)}</strong></div><div class="kpi"><span>DMS → Decimal</span><strong>${fmt(r.decFromDms)}°</strong></div><div class="kpi"><span>Decimal → DMS</span><strong style="font-size:15px">${escapeHtml(r.dmsFromDec)}</strong></div></div></div>
+      <div class="card"><h3>Coordenadas</h3><div class="form-row"><div class="field"><label>X/E 1</label><input type="number" data-module-field="coords.x1" value="${d.x1}"></div><div class="field"><label>Y/N 1</label><input type="number" data-module-field="coords.y1" value="${d.y1}"></div><div class="field"><label>X/E 2</label><input type="number" data-module-field="coords.x2" value="${d.x2}"></div><div class="field"><label>Y/N 2</label><input type="number" data-module-field="coords.y2" value="${d.y2}"></div></div><div class="kpis"><div class="kpi"><span>Distancia</span><strong>${fmt(r.dist)} m</strong></div><div class="kpi"><span>Azimut 1→2</span><strong>${fmt(r.az12)}°</strong></div><div class="kpi"><span>Rumbo 1→2</span><strong style="font-size:15px">${escapeHtml(r.rumbo12)}</strong></div></div></div></div>
+      <div class="grid two" style="margin-top:16px"><div class="card"><h3>Radiación</h3><div class="form-row"><div class="field"><label>X/E origen</label><input type="number" data-module-field="coords.radX" value="${d.radX}"></div><div class="field"><label>Y/N origen</label><input type="number" data-module-field="coords.radY" value="${d.radY}"></div><div class="field"><label>Azimut</label><input data-module-field="coords.radAz" value="${d.radAz}"></div><div class="field"><label>Distancia</label><input type="number" data-module-field="coords.radDist" value="${d.radDist}"></div></div><div class="kpis"><div class="kpi"><span>X/E radiado</span><strong>${fmt(r.radX2)}</strong></div><div class="kpi"><span>Y/N radiado</span><strong>${fmt(r.radY2)}</strong></div></div></div>
+      <div class="card"><h3>Pendiente</h3><div class="form-row"><div class="field"><label>Cota 1</label><input type="number" data-module-field="coords.elev1" value="${d.elev1}"></div><div class="field"><label>Cota 2</label><input type="number" data-module-field="coords.elev2" value="${d.elev2}"></div><div class="field"><label>Distancia horizontal</label><input type="number" data-module-field="coords.distSlope" value="${d.distSlope}"></div></div><div class="kpis"><div class="kpi"><span>Desnivel</span><strong>${fmt(r.dz)} m</strong></div><div class="kpi"><span>Pendiente</span><strong>${fmt(r.slopePct)}%</strong></div><div class="kpi"><span>Ángulo</span><strong>${fmt(r.slopeDeg)}°</strong></div></div></div></div>
+    </div>`;
+  }
+  function calculateCoords(store=true){
+    const d=current().modules.coords; const azFromRumbo=rumboToAz(d.rumbo), rumboFromAz=azToRumbo(parseDMS(d.azimuth)), decFromDms=parseDMS(d.dms), dmsFromDec=toDMS(num(d.decimalAngle));
+    const dx=num(d.x2)-num(d.x1), dy=num(d.y2)-num(d.y1), dist=Math.hypot(dx,dy), az12=normAz(deg(Math.atan2(dx,dy))), rumbo12=azToRumbo(az12);
+    const raz=parseDMS(d.radAz), radX2=num(d.radX)+num(d.radDist)*Math.sin(rad(raz)), radY2=num(d.radY)+num(d.radDist)*Math.cos(rad(raz));
+    const dz=num(d.elev2)-num(d.elev1), slopePct=num(d.distSlope)?dz/num(d.distSlope)*100:NaN, slopeDeg=deg(Math.atan2(dz,num(d.distSlope)));
+    const result={azFromRumbo,rumboFromAz,decFromDms,dmsFromDec,dist,az12,rumbo12,radX2,radY2,dz,slopePct,slopeDeg}; if(store){d.result=result;save();renderCoords();toast('Conversiones calculadas.','ok')} return result;
+  }
+
+  function renderAreas(){
+    const d=current().modules.areas; const r=calculateAreas(false);
+    $('#content').innerHTML=`<div class="card">${moduleHeader('areas','Cálculo de áreas por coordenadas','Método de Gauss / shoelace para polígono cerrado, perímetro y croquis.')}
+      ${formulaBlock('Área = 1/2 · |Σ(xᵢyᵢ₊₁ − yᵢxᵢ₊₁)|. Perímetro = Σ distancia entre vértices consecutivos.')}
+      <div class="table-wrap"><table><thead><tr><th>Vértice</th><th>X/E</th><th>Y/N</th><th>Z opc.</th><th>Producto +</th><th>Producto -</th><th>Acciones</th></tr></thead><tbody>${d.rows.map((row,i)=>`<tr><td><input data-cell="areas.rows.${i}.name" value="${escapeHtml(row.name)}"></td><td><input type="number" data-cell="areas.rows.${i}.x" value="${row.x}"></td><td><input type="number" data-cell="areas.rows.${i}.y" value="${row.y}"></td><td><input type="number" data-cell="areas.rows.${i}.z" value="${row.z}"></td><td class="num">${fmt(r.rows[i]?.p1)}</td><td class="num">${fmt(r.rows[i]?.p2)}</td><td><div class="row-actions"><button class="btn secondary mini" data-action="insertRow" data-target="areas" data-index="${i}">+</button><button class="btn secondary mini" data-action="dupRow" data-target="areas" data-index="${i}">⧉</button><button class="btn danger mini" data-action="delRow" data-target="areas" data-index="${i}">×</button></div></td></tr>`).join('')}</tbody></table></div>
+      <div class="kpis"><div class="kpi ok"><span>Área</span><strong>${fmt(r.area)} m²</strong></div><div class="kpi"><span>Hectáreas</span><strong>${fmt(r.area/10000)} ha</strong></div><div class="kpi"><span>km²</span><strong>${fmt(r.area/1000000)} km²</strong></div><div class="kpi"><span>Perímetro</span><strong>${fmt(r.perimeter)} m</strong></div></div>
+      <div class="graph">${plotXY(d.rows.map(p=>({name:p.name,x:num(p.x),y:num(p.y)})),true)}</div>
+    </div>`;
+  }
+  function calculateAreas(store=true){
+    const pts=current().modules.areas.rows.map(p=>({name:p.name,x:num(p.x,NaN),y:num(p.y,NaN),z:num(p.z,0)})).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)); let sum1=0,sum2=0,per=0; const rows=[];
+    for(let i=0;i<pts.length;i++){const a=pts[i], b=pts[(i+1)%pts.length]; const p1=a.x*b.y, p2=a.y*b.x; sum1+=p1; sum2+=p2; per+=Math.hypot(b.x-a.x,b.y-a.y); rows.push({...a,p1,p2});}
+    const area=Math.abs(sum1-sum2)/2; const result={rows,sum1,sum2,area,perimeter:per}; if(store){current().modules.areas.result=result;save();renderAreas();toast('Área calculada.','ok')} return result;
+  }
+
+  function renderLibrary(){
+    $('#content').innerHTML=`<div class="grid cards">
+      ${[
+        ['Brújula básica','Poligonal cerrada con 4 lados, rumbos cuadrantales y ajuste Bowditch.','compass'],
+        ['Nivelación simple','BM conocido, una vista atrás y una vista adelante.','levelSimple'],
+        ['Nivelación compuesta','Dos estaciones de instrumento con punto de cambio.','levelCompound'],
+        ['Nivelación cerrada','Cierre sobre BM inicial y corrección proporcional.','levelClosed'],
+        ['Estación total','Radiación de 3 puntos con ángulos cenitales.','station'],
+        ['Área por coordenadas','Polígono de 4 vértices por método de Gauss.','areas']
+      ].map(e=>`<div class="card module-card"><div class="bigico">📌</div><h3>${e[0]}</h3><p>${e[1]}</p><button class="btn" data-action="loadExample" data-target="${e[2]}">Cargar en módulo</button></div>`).join('')}
+    </div>`;
+  }
+
+  function getRowsForExport(key){
+    const p=current(); let rows=[];
+    if(key==='compass') rows=(calculateCompass(false).rows||[]).map(r=>({from:r.from,to:r.to,dist:r.dist,rumbo:r.rumbo,azimuth:r.az,dN:r.dN,dE:r.dE,cN:r.cN,cE:r.cE,adjDN:r.adjDN,adjDE:r.adjDE,N:r.adjN,E:r.adjE}));
+    else if(key==='levelSimple') rows=calculateLevelSimple(false).rows;
+    else if(key==='levelCompound') rows=calculateLevelCompound(false).rows;
+    else if(key==='levelClosed') rows=calculateLevelClosed(false).rows;
+    else if(key==='station') rows=calculateStation(false).rows;
+    else if(key==='areas') rows=calculateAreas(false).rows;
+    else if(key==='coords') rows=[calculateCoords(false)];
+    return rows;
+  }
+  function download(name,content,type='text/plain'){const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([content],{type})); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},300)}
+  function rowsToCSV(rows){if(!rows.length) return ''; const cols=Array.from(rows.reduce((s,r)=>{Object.keys(r).forEach(k=>s.add(k));return s},new Set())); const esc=v=>`"${String(v??'').replace(/"/g,'""')}"`; return [cols.join(','),...rows.map(r=>cols.map(c=>esc(r[c])).join(','))].join('\n')}
+  function exportCSV(key){download(`${current().meta.name}_${key}.csv`,rowsToCSV(getRowsForExport(key)),'text/csv;charset=utf-8')}
+  function exportJSON(key){download(`${current().meta.name}_${key}.json`,JSON.stringify({project:current().meta,module:key,data:getRowsForExport(key)},null,2),'application/json')}
+  function exportXLS(key){const rows=getRowsForExport(key); if(!rows.length) return toast('No hay datos para exportar.','error'); const cols=Object.keys(rows[0]); const html=`<html><head><meta charset="utf-8"></head><body><table border="1"><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr>${rows.map(r=>`<tr>${cols.map(c=>`<td>${r[c]??''}</td>`).join('')}</tr>`).join('')}</table></body></html>`; download(`${current().meta.name}_${key}.xls`,html,'application/vnd.ms-excel')}
+  function printReport(key){
+    const p=current(); const rows=getRowsForExport(key); const title=(modules.find(m=>m.id===key)||{}).title||key;
+    const table=rows.length?`<table border="1" cellspacing="0" cellpadding="5"><thead><tr>${Object.keys(rows[0]).map(c=>`<th>${escapeHtml(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${Object.keys(rows[0]).map(c=>`<td>${escapeHtml(fmtMaybe(r[c]))}</td>`).join('')}</tr>`).join('')}</tbody></table>`:'<p>Sin datos calculados.</p>';
+    const html=`<!doctype html><html><head><meta charset="utf-8"><title>Reporte ${title}</title><style>body{font-family:Arial;padding:28px;color:#111}h1{color:#0d6efd}table{border-collapse:collapse;width:100%;font-size:11px}th{background:#eef5ff}td,th{border:1px solid #ccc;padding:5px;text-align:left}.meta{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:14px 0}.box{border:1px solid #ddd;border-radius:10px;padding:10px}</style></head><body><h1>Reporte técnico: ${escapeHtml(title)}</h1><div class="meta"><div class="box"><b>Proyecto:</b> ${escapeHtml(p.meta.name)}</div><div class="box"><b>Responsable:</b> ${escapeHtml(p.meta.operator||'—')}</div><div class="box"><b>Fecha:</b> ${escapeHtml(p.meta.date)}</div><div class="box"><b>Módulo:</b> ${escapeHtml(title)}</div></div><h2>Datos y resultados</h2>${table}<h2>Observaciones</h2><p>Reporte generado localmente desde TopoPro Web. Revise unidades, tolerancias y datum antes de usar resultados en obra.</p><p style="margin-top:55px">Firma / Responsable: _______________________________</p><script>window.print()<\/script></body></html>`;
+    const w=window.open('','_blank'); if(w){w.document.write(html);w.document.close()} else toast('El navegador bloqueó la ventana de impresión. Permita ventanas emergentes.','error')
+  }
+  function fmtMaybe(v){return typeof v==='number'?fmt(v):v}
+
+  function parseCSV(text){
+    const lines=text.trim().split(/\r?\n/).filter(Boolean); if(!lines.length) return [];
+    const sep=(lines[0].includes(';')?';':lines[0].includes('\t')?'\t':',');
+    const split=line=>{const out=[];let cur='',q=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch==='"'){q=!q;continue} if(ch===sep&&!q){out.push(cur);cur=''}else cur+=ch} out.push(cur);return out.map(x=>x.trim())};
+    const headers=split(lines[0]).map(h=>h.trim()); return lines.slice(1).map(line=>{const vals=split(line); const o={}; headers.forEach((h,i)=>o[h]=vals[i]??''); return o});
+  }
+  function importFile(key,file){
+    if(!file) return; const ext=file.name.split('.').pop().toLowerCase();
+    if(ext==='xlsx') {toast('Importación XLSX queda preparada para versión con SheetJS. Use CSV, TXT o JSON en esta versión autocontenida offline.','error'); return;}
+    const reader=new FileReader(); reader.onload=()=>{try{let rows=[]; const text=reader.result; if(ext==='json'){const obj=JSON.parse(text); rows=Array.isArray(obj)?obj:(obj.rows||obj.data||[]);} else rows=parseCSV(text); applyImportedRows(key,rows); toast(`Importadas ${rows.length} filas en ${key}.`,'ok');}catch(e){toast('No se pudo importar: '+e.message,'error')}}; reader.readAsText(file);
+  }
+  function applyImportedRows(key,rows){
+    const d=current().modules[key]; if(!d) return; if(key==='levelSimple'){
+      const r=rows[0]||{}; Object.assign(d,{knownElev:r.knownElev||r.cota||d.knownElev,back:r.back||r.va||d.back,fore:r.fore||r.vf||d.fore,benchmark:r.benchmark||r.punto_conocido||d.benchmark,newPoint:r.newPoint||r.punto_nuevo||d.newPoint});
+    } else if(Array.isArray(d.rows)) d.rows=rows.map(r=>normalizeRow(key,r)); save(); renderContent();
+  }
+  function normalizeRow(key,r){
+    const lower={}; Object.keys(r).forEach(k=>lower[k.trim().toLowerCase()]=r[k]); const g=(...names)=>{for(const n of names){if(lower[n]!==undefined)return lower[n]} return ''};
+    if(key==='compass') return {from:g('from','est','estacion','estación'),to:g('to','a','hacia'),dist:g('dist','distancia'),rumbo:g('rumbo'),az:g('az','azimut')};
+    if(key==='station') return {point:g('point','punto'),angleH:g('angleh','ah','angulo_horizontal'),angleV:g('anglev','av','zenit','cenital'),mode:g('mode','modo')||'zenith',slope:g('slope','di','distancia_inclinada'),hp:g('hp','altura_prisma'),code:g('code','codigo','código'),desc:g('desc','descripcion','descripción')};
+    if(key==='areas') return {name:g('name','vertice','vértice','punto'),x:g('x','este','e'),y:g('y','norte','n'),z:g('z','cota')};
+    return {point:g('point','punto'),bs:g('bs','va','vista_atras','vista atrás'),is:g('is','vi','vista_intermedia'),fs:g('fs','vf','vista_adelante'),dist:g('dist','distancia'),note:g('note','nota','observacion')};
+  }
+
+  function plotPoints(points,opt={}){return plotXY(points.map(p=>({name:p.name,x:p.e,y:p.n})),opt.closed)}
+  function plotXY(points,closed=false){
+    points=points.filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)); if(!points.length) return '<div class="empty">Sin puntos válidos para graficar.</div>';
+    const xs=points.map(p=>p.x), ys=points.map(p=>p.y), minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys); const W=900,H=330,pad=42; const spanX=maxX-minX||1, spanY=maxY-minY||1;
+    const sx=x=>pad+(x-minX)/(spanX)*(W-2*pad); const sy=y=>H-pad-(y-minY)/(spanY)*(H-2*pad);
+    const pts=points.map(p=>`${sx(p.x)},${sy(p.y)}`).join(' '); const ptsClosed=closed?pts+' '+`${sx(points[0].x)},${sy(points[0].y)}`:pts;
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Croquis topográfico"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="currentColor"/></marker></defs><rect x="0" y="0" width="${W}" height="${H}" fill="transparent"/><polyline points="${ptsClosed}" fill="none" stroke="var(--primary)" stroke-width="3" stroke-linejoin="round"/>${points.map((p,i)=>`<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="${p.station?7:5}" fill="${p.station?'var(--danger)':'var(--success)'}"/><text x="${sx(p.x)+8}" y="${sy(p.y)-8}" fill="var(--text)" font-size="12" font-weight="700">${escapeHtml(p.name||('P'+(i+1)))}</text><text x="${sx(p.x)+8}" y="${sy(p.y)+7}" fill="var(--muted)" font-size="10">E:${fmt(p.x)} N:${fmt(p.y)}</text>`).join('')}<text x="18" y="28" fill="var(--muted)" font-size="12">Croquis automático - escala gráfica referencial</text></svg>`;
+  }
+  function plotProfile(rows){
+    const pts=rows.filter(r=>Number.isFinite(r.elev)).map((r,i)=>({x:num(r.dist,i), y:Number.isFinite(r.elevCorr)?r.elevCorr:r.elev, name:r.point})); if(!pts.length) return '<div class="empty">Sin perfil válido.</div>';
+    const xs=pts.map(p=>p.x), ys=pts.map(p=>p.y), minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys); const W=900,H=330,pad=45, spanX=maxX-minX||1, spanY=maxY-minY||1;
+    const sx=x=>pad+(x-minX)/spanX*(W-2*pad), sy=y=>H-pad-(y-minY)/spanY*(H-2*pad); const pl=pts.map(p=>`${sx(p.x)},${sy(p.y)}`).join(' ');
+    return `<svg viewBox="0 0 ${W} ${H}"><line x1="${pad}" y1="${H-pad}" x2="${W-pad}" y2="${H-pad}" stroke="var(--line)"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${H-pad}" stroke="var(--line)"/><polyline points="${pl}" fill="none" stroke="var(--primary)" stroke-width="3"/>${pts.map(p=>`<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="4" fill="var(--success)"/><text x="${sx(p.x)+6}" y="${sy(p.y)-6}" fill="var(--text)" font-size="11">${escapeHtml(p.name)}</text><text x="${sx(p.x)+6}" y="${sy(p.y)+8}" fill="var(--muted)" font-size="10">${fmt(p.y)} m</text>`).join('')}<text x="${W/2-45}" y="${H-10}" fill="var(--muted)" font-size="12">Distancia acumulada</text><text x="10" y="24" fill="var(--muted)" font-size="12">Cota</text></svg>`;
+  }
+
+  function setByPath(root,path,value){const parts=path.split('.'); let obj=root; for(let i=0;i<parts.length-1;i++) obj=obj[parts[i]]; obj[parts.at(-1)]=value;}
+  function updateFromInput(el){
+    const p=current(); if(el.dataset.bind){setByPath(p,el.dataset.bind, el.type==='number'?num(el.value):el.value); save(); renderProjectSelect(); return;}
+    if(el.dataset.moduleField){setByPath(p.modules,el.dataset.moduleField, el.type==='number'?num(el.value):el.value); save(); return;}
+    if(el.dataset.cell){setByPath(p.modules,el.dataset.cell, el.type==='number'?num(el.value):el.value); save(); return;}
+  }
+  function addRow(key,index=null,dup=false){
+    const rows=current().modules[key]?.rows; if(!rows) return; let blank={}; if(rows.length) blank=JSON.parse(JSON.stringify(dup&&index!==null?rows[index]:rows[rows.length-1])); Object.keys(blank).forEach(k=>{if(!dup) blank[k]=''});
+    if(!Object.keys(blank).length){blank= key==='compass'?{from:'',to:'',dist:'',rumbo:'',az:''}: key==='station'?{point:'',angleH:'',angleV:'',mode:'zenith',slope:'',hp:'',code:'',desc:''}: key==='areas'?{name:'',x:'',y:'',z:''}:{point:'',bs:'',is:'',fs:'',dist:'',note:''};}
+    const pos=index===null?rows.length:index+1; rows.splice(pos,0,blank); save(); renderContent();
+  }
+  function delRow(key,index){const rows=current().modules[key]?.rows; if(rows&&rows.length>1){rows.splice(index,1); save(); renderContent();} else toast('Debe quedar al menos una fila.','error')}
+  function calc(key){({compass:calculateCompass,levelSimple:calculateLevelSimple,levelCompound:calculateLevelCompound,levelClosed:calculateLevelClosed,station:calculateStation,coords:calculateCoords,areas:calculateAreas}[key]||(()=>{}))(true)}
+  function loadExamples(){const id=current().id; const name=current().meta.name; const op=current().meta.operator; const fresh=defaultProject(name||'Proyecto de ejemplo'); fresh.id=id; fresh.meta.operator=op; const i=state.projects.findIndex(p=>p.id===id); state.projects[i]=fresh; save(); render(); toast('Se cargaron datos de ejemplo en todos los módulos.','ok')}
+  function loadExample(key){const fresh=defaultProject('tmp'); current().modules[key]=fresh.modules[key]; save(); state.active=key; render(); toast('Ejemplo cargado.','ok')}
+
+  document.addEventListener('click',e=>{
+    const mod=e.target.closest('[data-module]'); if(mod){state.active=mod.dataset.module; render(); return;}
+    const btn=e.target.closest('[data-action]'); if(!btn) return; const a=btn.dataset.action, target=btn.dataset.target, index=btn.dataset.index!==undefined?parseInt(btn.dataset.index):null;
+    if(a==='toggleFormulas'){state.formulas=!state.formulas;localStorage.setItem('topopro_formulas',state.formulas);renderContent();}
+    if(a==='saveProject'){save();toast('Proyecto guardado en este navegador.','ok')}
+    if(a==='newProject'){const p=defaultProject('Nuevo proyecto');state.projects.push(p);state.activeId=p.id;save();render();}
+    if(a==='duplicateProject'){const p=JSON.parse(JSON.stringify(current()));p.id=uid();p.meta.name=(p.meta.name||'Proyecto')+' copia';state.projects.push(p);state.activeId=p.id;save();render();}
+    if(a==='deleteProject'){if(state.projects.length===1) return toast('No se puede eliminar el único proyecto.','error'); if(confirm('¿Eliminar este proyecto del almacenamiento local?')){state.projects=state.projects.filter(p=>p.id!==state.activeId);state.activeId=state.projects[0].id;save();render();}}
+    if(a==='backupProject'){download(`${current().meta.name}_respaldo.json`,JSON.stringify(current(),null,2),'application/json')}
+    if(a==='loadExamples') loadExamples();
+    if(a==='calc') calc(btn.dataset.calc);
+    if(a==='addRow') addRow(target);
+    if(a==='insertRow') addRow(target,index,false);
+    if(a==='dupRow') addRow(target,index,true);
+    if(a==='delRow') delRow(target,index);
+    if(a==='exportCSV') exportCSV(target);
+    if(a==='exportJSON') exportJSON(target);
+    if(a==='exportXLS') exportXLS(target);
+    if(a==='printReport') printReport(target);
+    if(a==='loadExample') loadExample(target);
+  });
+  document.addEventListener('input',e=>{if(e.target.matches('[data-bind],[data-module-field],[data-cell]')) updateFromInput(e.target)});
+  document.addEventListener('change',e=>{
+    if(e.target.id==='projectSelect'){state.activeId=e.target.value;save();render();return}
+    if(e.target.id==='themeToggle'){state.theme=e.target.checked?'dark':'light';localStorage.setItem('topopro_theme',state.theme);render();return}
+    if(e.target.matches('[data-bind],[data-module-field],[data-cell]')) {updateFromInput(e.target); renderContent();}
+    if(e.target.dataset.import) importFile(e.target.dataset.import,e.target.files[0]);
+  });
+
+  load(); render();
+})();
+</script>
+</body>
+</html>
