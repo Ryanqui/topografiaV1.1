@@ -1,0 +1,498 @@
+{
+  "compass": {
+    "type": "closed",
+    "startN": 1000,
+    "startE": 1000,
+    "method": "bowditch",
+    "rows": [
+      {
+        "from": "A",
+        "to": "B",
+        "dist": 120,
+        "rumbo": "N 45 E",
+        "az": ""
+      },
+      {
+        "from": "B",
+        "to": "C",
+        "dist": 95,
+        "rumbo": "S 70 E",
+        "az": ""
+      },
+      {
+        "from": "C",
+        "to": "D",
+        "dist": 110,
+        "rumbo": "S 35 W",
+        "az": ""
+      },
+      {
+        "from": "D",
+        "to": "A",
+        "dist": 130,
+        "rumbo": "N 55 W",
+        "az": ""
+      }
+    ]
+  },
+  "levelSimple": {
+    "benchmark": "BM-1",
+    "newPoint": "P-1",
+    "knownElev": 100,
+    "back": 1.245,
+    "fore": 2.015
+  },
+  "levelCompound": {
+    "startElev": 100,
+    "rows": [
+      {
+        "point": "BM-1",
+        "bs": 1.5,
+        "is": "",
+        "fs": "",
+        "dist": 0,
+        "note": "Cota conocida"
+      },
+      {
+        "point": "P-1",
+        "bs": "",
+        "is": 0.65,
+        "fs": "",
+        "dist": 20,
+        "note": "Intermedia"
+      },
+      {
+        "point": "PC-1",
+        "bs": "",
+        "is": "",
+        "fs": 1.8,
+        "dist": 40,
+        "note": "Cambio"
+      },
+      {
+        "point": "PC-1",
+        "bs": 1.2,
+        "is": "",
+        "fs": "",
+        "dist": 40,
+        "note": "Nueva estación"
+      },
+      {
+        "point": "P-2",
+        "bs": "",
+        "is": 0.72,
+        "fs": "",
+        "dist": 65,
+        "note": "Intermedia"
+      },
+      {
+        "point": "BM-2",
+        "bs": "",
+        "is": "",
+        "fs": 1.45,
+        "dist": 90,
+        "note": "Final"
+      }
+    ]
+  },
+  "levelClosed": {
+    "startElev": 100,
+    "knownEnd": 100,
+    "method": "distance",
+    "tolerance": 0.012,
+    "rows": [
+      {
+        "point": "BM-1",
+        "bs": 1.32,
+        "is": "",
+        "fs": "",
+        "dist": 0,
+        "note": "Inicio"
+      },
+      {
+        "point": "P-1",
+        "bs": "",
+        "is": 0.88,
+        "fs": "",
+        "dist": 30,
+        "note": ""
+      },
+      {
+        "point": "PC-1",
+        "bs": "",
+        "is": "",
+        "fs": 1.76,
+        "dist": 65,
+        "note": "Cambio"
+      },
+      {
+        "point": "PC-1",
+        "bs": 1.1,
+        "is": "",
+        "fs": "",
+        "dist": 65,
+        "note": "Nueva estación"
+      },
+      {
+        "point": "P-2",
+        "bs": "",
+        "is": 0.955,
+        "fs": "",
+        "dist": 105,
+        "note": ""
+      },
+      {
+        "point": "BM-1",
+        "bs": "",
+        "is": "",
+        "fs": 1.185,
+        "dist": 135,
+        "note": "Cierre"
+      }
+    ]
+  },
+  "station": {
+    "stationName": "E-1",
+    "x": 5000,
+    "y": 8000,
+    "z": 120,
+    "azBase": 35,
+    "hi": 1.55,
+    "rows": [
+      {
+        "point": "P-101",
+        "angleH": 15,
+        "angleV": 88.5,
+        "mode": "zenith",
+        "slope": 48.5,
+        "hp": 1.5,
+        "code": "LIM",
+        "desc": "Límite"
+      },
+      {
+        "point": "P-102",
+        "angleH": 76.3,
+        "angleV": 91.2,
+        "mode": "zenith",
+        "slope": 62,
+        "hp": 1.5,
+        "code": "ARB",
+        "desc": "Árbol"
+      },
+      {
+        "point": "P-103",
+        "angleH": 142.6,
+        "angleV": 89.4,
+        "mode": "zenith",
+        "slope": 53.2,
+        "hp": 1.5,
+        "code": "EJE",
+        "desc": "Eje"
+      }
+    ]
+  },
+  "theodolite": {
+    "x": 1000,
+    "y": 1000,
+    "z": 100,
+    "azBase": 20,
+    "hi": 1.45,
+    "rows": [
+      {
+        "point": "T-1",
+        "directH": 25.1,
+        "inverseH": 205.3,
+        "directV": 4.2,
+        "inverseV": 355.9,
+        "dist": 55,
+        "hp": 1.4,
+        "method": "radiación"
+      },
+      {
+        "point": "T-2",
+        "directH": 70.4,
+        "inverseH": 250.5,
+        "directV": -2.5,
+        "inverseV": 2.3,
+        "dist": 62,
+        "hp": 1.4,
+        "method": "radiación"
+      }
+    ]
+  },
+  "tacheometry": {
+    "x": 2000,
+    "y": 2000,
+    "z": 105,
+    "azBase": 40,
+    "hi": 1.5,
+    "K": 100,
+    "C": 0,
+    "rows": [
+      {
+        "point": "Q-1",
+        "upper": 1.88,
+        "middle": 1.55,
+        "lower": 1.22,
+        "az": 25,
+        "vAngle": 3.5,
+        "code": "TER"
+      },
+      {
+        "point": "Q-2",
+        "upper": 2.1,
+        "middle": 1.7,
+        "lower": 1.3,
+        "az": 85,
+        "vAngle": -1.8,
+        "code": "BOR"
+      }
+    ]
+  },
+  "coords": {
+    "rumbo": "S 35 20 00 E",
+    "azimuth": 124.667,
+    "dms": "12 30 45",
+    "decimalAngle": 12.5125,
+    "x1": 1000,
+    "y1": 1000,
+    "x2": 1090,
+    "y2": 1150,
+    "radX": 1000,
+    "radY": 1000,
+    "radAz": 60,
+    "radDist": 80,
+    "elev1": 100,
+    "elev2": 108,
+    "distSlope": 160
+  },
+  "areas": {
+    "rows": [
+      {
+        "name": "A",
+        "x": 1000,
+        "y": 1000,
+        "z": 0
+      },
+      {
+        "name": "B",
+        "x": 1120,
+        "y": 1020,
+        "z": 0
+      },
+      {
+        "name": "C",
+        "x": 1110,
+        "y": 1115,
+        "z": 0
+      },
+      {
+        "name": "D",
+        "x": 980,
+        "y": 1100,
+        "z": 0
+      }
+    ]
+  },
+  "contours": {
+    "interval": 1,
+    "rows": [
+      {
+        "point": "P1",
+        "x": 0,
+        "y": 0,
+        "z": 100
+      },
+      {
+        "point": "P2",
+        "x": 100,
+        "y": 0,
+        "z": 102
+      },
+      {
+        "point": "P3",
+        "x": 200,
+        "y": 10,
+        "z": 104
+      },
+      {
+        "point": "P4",
+        "x": 0,
+        "y": 100,
+        "z": 101
+      },
+      {
+        "point": "P5",
+        "x": 100,
+        "y": 100,
+        "z": 103
+      },
+      {
+        "point": "P6",
+        "x": 200,
+        "y": 100,
+        "z": 105
+      },
+      {
+        "point": "P7",
+        "x": 30,
+        "y": 180,
+        "z": 102
+      },
+      {
+        "point": "P8",
+        "x": 160,
+        "y": 190,
+        "z": 106
+      }
+    ]
+  },
+  "profiles": {
+    "rows": [
+      {
+        "prog": 0,
+        "terrain": 100,
+        "grade": 99.6
+      },
+      {
+        "prog": 20,
+        "terrain": 101.1,
+        "grade": 100
+      },
+      {
+        "prog": 40,
+        "terrain": 102.4,
+        "grade": 100.4
+      },
+      {
+        "prog": 60,
+        "terrain": 101.8,
+        "grade": 100.8
+      },
+      {
+        "prog": 80,
+        "terrain": 100.9,
+        "grade": 101.2
+      },
+      {
+        "prog": 100,
+        "terrain": 99.8,
+        "grade": 101.6
+      }
+    ]
+  },
+  "volumes": {
+    "rows": [
+      {
+        "section": "0+000",
+        "dist": 0,
+        "areaCut": 0,
+        "areaFill": 8
+      },
+      {
+        "section": "0+020",
+        "dist": 20,
+        "areaCut": 3,
+        "areaFill": 5
+      },
+      {
+        "section": "0+040",
+        "dist": 40,
+        "areaCut": 10,
+        "areaFill": 2
+      },
+      {
+        "section": "0+060",
+        "dist": 60,
+        "areaCut": 16,
+        "areaFill": 0
+      },
+      {
+        "section": "0+080",
+        "dist": 80,
+        "areaCut": 8,
+        "areaFill": 3
+      },
+      {
+        "section": "0+100",
+        "dist": 100,
+        "areaCut": 2,
+        "areaFill": 9
+      }
+    ]
+  },
+  "curves": {
+    "h": {
+      "R": 80,
+      "delta": 45,
+      "PI": 250
+    },
+    "v": {
+      "g1": 2.0,
+      "g2": -1.0,
+      "L": 120,
+      "PIV": 500,
+      "elevPIV": 110,
+      "step": 20
+    }
+  },
+  "gnss": {
+    "datum": "WGS84",
+    "zone": "UTM 18S / local referencial",
+    "rows": [
+      {
+        "point": "G-1",
+        "lat": -12.0453,
+        "lon": -77.0311,
+        "hEll": 125.6,
+        "N": 31.2,
+        "code": "BM"
+      },
+      {
+        "point": "G-2",
+        "lat": -12.0442,
+        "lon": -77.0298,
+        "hEll": 126.8,
+        "N": 31.1,
+        "code": "LIM"
+      },
+      {
+        "point": "G-3",
+        "lat": -12.0461,
+        "lon": -77.0289,
+        "hEll": 124.9,
+        "N": 31.3,
+        "code": "PTO"
+      }
+    ]
+  },
+  "fieldbook": {
+    "date": "2026-06-03",
+    "operator": "Operador de práctica",
+    "equipment": "Estación total / nivel / GPS",
+    "weather": "Despejado",
+    "location": "Campo de práctica",
+    "notes": "Ejemplo de registro de campo.",
+    "sketch": "Croquis referencial del eje y puntos levantados.",
+    "rows": [
+      {
+        "time": "08:00",
+        "point": "BM-1",
+        "activity": "Reconocimiento",
+        "obs": "Cota conocida"
+      },
+      {
+        "time": "09:15",
+        "point": "E-1",
+        "activity": "Instalación",
+        "obs": "Equipo centrado y nivelado"
+      },
+      {
+        "time": "10:30",
+        "point": "P-101",
+        "activity": "Radiación",
+        "obs": "Punto de límite"
+      }
+    ]
+  }
+}
