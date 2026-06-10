@@ -1,4 +1,0 @@
-{
-  "descripcion": "Datos de ejemplo incluidos en TopoPro Web para probar los módulos prioritarios.",
-  "modulos": ["brujula", "nivelacion_simple", "nivelacion_compuesta", "nivelacion_cerrada", "estacion_total", "coordenadas", "areas"]
-}
