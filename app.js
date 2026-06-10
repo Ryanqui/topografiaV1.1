@@ -1,155 +1,1214 @@
+/* Practicas de Topografia
+   Aplicativo web modular para topografía y taquimetría.
+   Funciona sin servidor; para PWA/Service Worker usar localhost o HTTPS. */
+(() => {
+  'use strict';
 
-(function(){
-'use strict';
-const STORAGE='topopro_v3_projects'; const ACTIVE='topopro_v3_active';
-const $=(s,r=document)=>r.querySelector(s); const $$=(s,r=document)=>Array.from(r.querySelectorAll(s));
-const modules=[
-{id:'dashboard',title:'Dashboard',icon:'⌂',desc:'Panel principal, estado del proyecto y configuración.'},
-{id:'compass',title:'Brújula / poligonal',icon:'🧭',desc:'Rumbos, azimuts, proyecciones, cierre y Bowditch.'},
-{id:'levelSimple',title:'Nivelación simple',icon:'📏',desc:'Altura de instrumento, desnivel y cota nueva.'},
-{id:'levelCompound',title:'Nivelación compuesta',icon:'⛰️',desc:'Libreta altimétrica, cambios de estación y verificación.'},
-{id:'levelClosed',title:'Nivelación cerrada',icon:'🔁',desc:'Error de cierre, tolerancia y cotas corregidas.'},
-{id:'station',title:'Estación total',icon:'🎯',desc:'Radiación, coordenadas XYZ y nube de puntos.'},
-{id:'theodolite',title:'Teodolito',icon:'◴',desc:'Lecturas directa/inversa, promedios y radiación.'},
-{id:'tacheometry',title:'Taquimetría',icon:'⌁',desc:'Lecturas de mira, distancia, desnivel, cota y radiación.'},
-{id:'coords',title:'Coordenadas / conversiones',icon:'⊕',desc:'Rumbo, azimut, DMS, distancia, pendiente y radiación.'},
-{id:'areas',title:'Áreas por coordenadas',icon:'▱',desc:'Área por Gauss, perímetro y croquis técnico.'},
-{id:'contours',title:'Curvas de nivel',icon:'≋',desc:'Nube XYZ, interpolación IDW e isolíneas básicas.'},
-{id:'profiles',title:'Perfiles',icon:'▰',desc:'Perfil longitudinal tipo guitarra, rasante, corte y relleno.'},
-{id:'volumes',title:'Volúmenes',icon:'▥',desc:'Áreas medias, prismoidal y diagrama de masas.'},
-{id:'curves',title:'Curvas geométricas',icon:'⌒',desc:'Curvas horizontales y verticales para replanteo.'},
-{id:'gnss',title:'GNSS / GPS',icon:'◎',desc:'Latitud, longitud, alturas, ondulación geoidal y datum.'},
-{id:'fieldbook',title:'Libreta digital',icon:'✎',desc:'Operador, clima, equipo, ubicación, croquis y observaciones.'},
-{id:'manuals',title:'Manuales',icon:'📘',desc:'Manual por módulo con ejemplo precargado y cálculo paso a paso.'}
-];
-let state={projects:[],activeId:null,active:'dashboard',formulas:true,theme:'light',manualTab:'compass'};
-function uid(){return 'p_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7)}
-function num(v,def=0){const n=parseFloat(String(v??'').replace(',','.'));return Number.isFinite(n)?n:def}
-function has(v){return v!==undefined&&v!==null&&String(v).trim()!==''}
-function rad(d){return d*Math.PI/180} function deg(r){return r*180/Math.PI}
-function normAz(a){a=num(a);a=((a%360)+360)%360;return Math.abs(a-360)<1e-10?0:a}
-function fmt(v,d=current().meta.decimals){return Number.isFinite(v)?Number(v).toFixed(d):'—'}
-function esc(s){return String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-function parseDMS(value){if(!has(value))return NaN;if(typeof value==='number')return value;let s=String(value).trim().replace(/[°º]/g,' ').replace(/[′']/g,' ').replace(/[″"]/g,' ').replace(/,/g,'.');let sign=/^-/.test(s)?-1:1;s=s.replace(/^[-+]/,'');const parts=s.split(/\s+/).filter(Boolean).map(Number);if(parts.length===1)return sign*parts[0];return sign*(Math.abs(parts[0]||0)+(parts[1]||0)/60+(parts[2]||0)/3600)}
-function toDMS(v){v=num(v);const sign=v<0?'-':'';v=Math.abs(v);const d=Math.floor(v),m=Math.floor((v-d)*60),s=((v-d)*60-m)*60;return `${sign}${d}° ${m}' ${s.toFixed(2)}"`}
-function rumboToAz(r){if(!has(r))return NaN;let s=String(r).toUpperCase().replace(/°|º|'|"/g,' ').replace(/,/g,'.').trim();const dirs=s.match(/[NSEW]/g)||[];const nums=s.match(/-?\d+(\.\d+)?/g)||[];const a=nums.length?parseDMS(nums.join(' ')):0;const first=dirs[0],last=dirs[dirs.length-1];if(first==='N'&&last==='E')return a;if(first==='S'&&last==='E')return 180-a;if(first==='S'&&last==='W')return 180+a;if(first==='N'&&last==='W')return 360-a;return parseDMS(r)}
-function azToRumbo(az){az=normAz(parseDMS(az));let q,a;if(az<=90){q=['N','E'];a=az}else if(az<=180){q=['S','E'];a=180-az}else if(az<=270){q=['S','W'];a=az-180}else{q=['N','W'];a=360-az}return `${q[0]} ${toDMS(a)} ${q[1]}`}
-function angleMean(a,b){a=rad(normAz(a));b=rad(normAz(b));return normAz(deg(Math.atan2(Math.sin(a)+Math.sin(b),Math.cos(a)+Math.cos(b))))}
-function current(){return state.projects.find(p=>p.id===state.activeId)||state.projects[0]}
-function defaultProject(name='Proyecto topográfico V3'){
-return {id:uid(),meta:{name,operator:'',date:new Date().toISOString().slice(0,10),decimals:3,mode:'student',primary:'#0f5bd8',accent:'#10b981',logo:''},modules:{
-compass:{type:'closed',startN:1000,startE:1000,method:'bowditch',rows:[{from:'A',to:'B',dist:120,rumbo:'N 45 E',az:''},{from:'B',to:'C',dist:95,rumbo:'S 70 E',az:''},{from:'C',to:'D',dist:110,rumbo:'S 35 W',az:''},{from:'D',to:'A',dist:130,rumbo:'N 55 W',az:''}],result:null},
-levelSimple:{benchmark:'BM-1',newPoint:'P-1',knownElev:100,back:1.245,fore:2.015,result:null},
-levelCompound:{startElev:100,knownEnd:'',rows:[{point:'BM-1',bs:1.5,is:'',fs:'',dist:0,note:'Cota conocida'},{point:'P-1',bs:'',is:0.65,fs:'',dist:20,note:'Intermedia'},{point:'PC-1',bs:'',is:'',fs:1.8,dist:40,note:'Cambio'},{point:'PC-1',bs:1.2,is:'',fs:'',dist:40,note:'Nueva estación'},{point:'P-2',bs:'',is:0.72,fs:'',dist:65,note:'Intermedia'},{point:'BM-2',bs:'',is:'',fs:1.45,dist:90,note:'Final'}],result:null},
-levelClosed:{startElev:100,knownEnd:100,method:'distance',tolerance:0.012,rows:[{point:'BM-1',bs:1.32,is:'',fs:'',dist:0,note:'Inicio'},{point:'P-1',bs:'',is:0.88,fs:'',dist:30,note:''},{point:'PC-1',bs:'',is:'',fs:1.76,dist:65,note:'Cambio'},{point:'PC-1',bs:1.1,is:'',fs:'',dist:65,note:'Nueva estación'},{point:'P-2',bs:'',is:0.955,fs:'',dist:105,note:''},{point:'BM-1',bs:'',is:'',fs:1.185,dist:135,note:'Cierre'}],result:null},
-station:{stationName:'E-1',x:5000,y:8000,z:120,azBase:35,hi:1.55,rows:[{point:'P-101',angleH:15,angleV:88.5,mode:'zenith',slope:48.5,hp:1.5,code:'LIM',desc:'Límite'},{point:'P-102',angleH:76.3,angleV:91.2,mode:'zenith',slope:62,hp:1.5,code:'ARB',desc:'Árbol'},{point:'P-103',angleH:142.6,angleV:89.4,mode:'zenith',slope:53.2,hp:1.5,code:'EJE',desc:'Eje'}],result:null},
-theodolite:{x:1000,y:1000,z:100,azBase:20,hi:1.45,rows:[{point:'T-1',directH:25.1,inverseH:205.3,directV:4.2,inverseV:355.9,dist:55,hp:1.4,method:'radiación'},{point:'T-2',directH:70.4,inverseH:250.5,directV:-2.5,inverseV:2.3,dist:62,hp:1.4,method:'radiación'}],result:null},
-tacheometry:{x:2000,y:2000,z:105,azBase:40,hi:1.5,K:100,C:0,rows:[{point:'Q-1',upper:1.88,middle:1.55,lower:1.22,az:25,vAngle:3.5,code:'TER'},{point:'Q-2',upper:2.1,middle:1.7,lower:1.3,az:85,vAngle:-1.8,code:'BOR'}],result:null},
-coords:{rumbo:'S 35 20 00 E',azimuth:124.667,dms:'12 30 45',decimalAngle:12.5125,x1:1000,y1:1000,x2:1090,y2:1150,radX:1000,radY:1000,radAz:60,radDist:80,elev1:100,elev2:108,distSlope:160,result:null},
-areas:{rows:[{name:'A',x:1000,y:1000,z:0},{name:'B',x:1120,y:1020,z:0},{name:'C',x:1110,y:1115,z:0},{name:'D',x:980,y:1100,z:0}],result:null},
-contours:{interval:1,rows:[{point:'P1',x:0,y:0,z:100},{point:'P2',x:100,y:0,z:102},{point:'P3',x:200,y:10,z:104},{point:'P4',x:0,y:100,z:101},{point:'P5',x:100,y:100,z:103},{point:'P6',x:200,y:100,z:105},{point:'P7',x:30,y:180,z:102},{point:'P8',x:160,y:190,z:106}],result:null},
-profiles:{rows:[{prog:0,terrain:100,grade:99.6},{prog:20,terrain:101.1,grade:100},{prog:40,terrain:102.4,grade:100.4},{prog:60,terrain:101.8,grade:100.8},{prog:80,terrain:100.9,grade:101.2},{prog:100,terrain:99.8,grade:101.6}],result:null},
-volumes:{method:'average',rows:[{section:'0+000',dist:0,areaCut:0,areaFill:8},{section:'0+020',dist:20,areaCut:3,areaFill:5},{section:'0+040',dist:40,areaCut:10,areaFill:2},{section:'0+060',dist:60,areaCut:16,areaFill:0},{section:'0+080',dist:80,areaCut:8,areaFill:3},{section:'0+100',dist:100,areaCut:2,areaFill:9}],result:null},
-curves:{h:{R:80,delta:45,PI:250},v:{g1:2.0,g2:-1.0,L:120,PIV:500,elevPIV:110,step:20},result:null},
-gnss:{datum:'WGS84',zone:'UTM 18S / local referencial',rows:[{point:'G-1',lat:-12.0453,lon:-77.0311,hEll:125.6,N:31.2,code:'BM'},{point:'G-2',lat:-12.0442,lon:-77.0298,hEll:126.8,N:31.1,code:'LIM'},{point:'G-3',lat:-12.0461,lon:-77.0289,hEll:124.9,N:31.3,code:'PTO'}],result:null},
-fieldbook:{date:new Date().toISOString().slice(0,10),operator:'',equipment:'Estación total / nivel / GPS',weather:'Despejado',location:'Campo de práctica',notes:'Ejemplo de registro de campo.',sketch:'Croquis referencial del eje y puntos levantados.',rows:[{time:'08:00',point:'BM-1',activity:'Reconocimiento',obs:'Cota conocida'},{time:'09:15',point:'E-1',activity:'Instalación',obs:'Equipo centrado y nivelado'},{time:'10:30',point:'P-101',activity:'Radiación',obs:'Punto de límite'}],result:null}
-}}}
-function load(){try{state.projects=JSON.parse(localStorage.getItem(STORAGE)||'[]');state.activeId=localStorage.getItem(ACTIVE);state.theme=localStorage.getItem('topopro_v3_theme')||'light';state.formulas=localStorage.getItem('topopro_v3_formulas')!=='false'}catch(e){state.projects=[]}if(!state.projects.length){const p=defaultProject();state.projects=[p];state.activeId=p.id}if(!current())state.activeId=state.projects[0].id}
-function save(){localStorage.setItem(STORAGE,JSON.stringify(state.projects));localStorage.setItem(ACTIVE,state.activeId);status('Guardado localmente')}
-function status(t){$('#status').textContent=t;setTimeout(()=>{$('#status').textContent='Listo'},2600)}
-function applyAppearance(){const p=current();document.documentElement.dataset.theme=state.theme;document.documentElement.style.setProperty('--primary',p.meta.primary||'#0f5bd8');document.documentElement.style.setProperty('--accent',p.meta.accent||'#10b981');const logo=$('#brandLogo');logo.innerHTML=p.meta.logo?`<img src="${p.meta.logo}" alt="Logo">`:'TP';$('#themeToggle').checked=state.theme==='dark'}
-function render(){applyAppearance();renderProjectSelect();renderNav();renderBindings();renderContent()}
-function renderProjectSelect(){const sel=$('#projectSelect');sel.innerHTML=state.projects.map(p=>`<option value="${p.id}" ${p.id===state.activeId?'selected':''}>${esc(p.meta.name)}</option>`).join('')}
-function renderNav(){$('#nav').innerHTML=modules.map(m=>`<button data-module="${m.id}" class="${state.active===m.id?'active':''}"><span class="ico">${m.icon}</span><span>${m.title}</span></button>`).join('')}
-function renderBindings(){const p=current();$$('[data-bind]').forEach(el=>{const v=getByPath(p,el.dataset.bind);if(el.type==='color')el.value=v||'#000000';else if(document.activeElement!==el)el.value=v??''})}
-function getByPath(o,path){return path.split('.').reduce((a,k)=>a?a[k]:undefined,o)}
-function setByPath(root,path,value){const parts=path.split('.');let o=root;for(let i=0;i<parts.length-1;i++){if(!o[parts[i]])o[parts[i]]={};o=o[parts[i]]}o[parts.at(-1)]=value}
-function setPage(t,s){$('#pageTitle').textContent=t;$('#pageSubtitle').textContent=s}
-function renderContent(){const m=modules.find(x=>x.id===state.active)||modules[0];setPage(m.title,m.desc);const map={dashboard:renderDashboard,compass:renderCompass,levelSimple:renderLevelSimple,levelCompound:renderLevelCompound,levelClosed:renderLevelClosed,station:renderStation,theodolite:renderTheodolite,tacheometry:renderTacheometry,coords:renderCoords,areas:renderAreas,contours:renderContours,profiles:renderProfiles,volumes:renderVolumes,curves:renderCurves,gnss:renderGnss,fieldbook:renderFieldbook,manuals:renderManuals};(map[state.active]||renderDashboard)()}
-function moduleHeader(key,title,desc,canImport=true){return `<div class="section-title"><div><h3>${title}</h3><small>${desc}</small></div><span class="badge ok">V3 operativo</span></div><div class="toolbar no-print"><button class="btn" data-action="calc" data-calc="${key}">Calcular</button>${canImport?`<label class="btn secondary">Importar<input type="file" data-import="${key}" accept=".csv,.txt,.json" hidden></label>`:''}<button class="btn secondary" data-action="exportCSV" data-target="${key}">CSV</button><button class="btn secondary" data-action="exportXLS" data-target="${key}">Excel</button><button class="btn secondary" data-action="exportJSON" data-target="${key}">JSON</button><button class="btn secondary" data-action="printReport">PDF/Imprimir</button><button class="btn secondary" data-action="showManual" data-target="${key}">Manual</button></div>`}
-function formulaBlock(txt){return state.formulas?`<div class="formula"><strong>Fórmula:</strong><br>${txt}</div>`:''}
-function input(path,label,type='number'){return `<div class="field"><label>${label}</label><input type="${type}" data-module-field="${path}" value="${esc(getByPath(current().modules,path))}"></div>`}
-function select(path,label,opts){const v=getByPath(current().modules,path);return `<div class="field"><label>${label}</label><select data-module-field="${path}">${opts.map(o=>`<option value="${o[0]}" ${v===o[0]?'selected':''}>${o[1]}</option>`).join('')}</select></div>`}
-function genericTable(key,cols,rows){return `<div class="table-wrap"><table><thead><tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}<th>Acciones</th></tr></thead><tbody>${rows.map((r,i)=>`<tr>${cols.map(c=>`<td><input ${c.type==='number'?'type="number"':''} data-cell="${key}.rows.${i}.${c.field}" value="${esc(r[c.field])}"></td>`).join('')}<td><div class="row-actions"><button class="btn secondary mini" data-action="insertRow" data-target="${key}" data-index="${i}">+</button><button class="btn secondary mini" data-action="dupRow" data-target="${key}" data-index="${i}">⧉</button><button class="btn danger mini" data-action="delRow" data-target="${key}" data-index="${i}">×</button></div></td></tr>`).join('')}</tbody></table></div>`}
-function resultTable(cols,rows){return `<div class="table-wrap"><table><thead><tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td class="${c.num?'num':''}">${c.num?fmt(r[c.field]):esc(r[c.field])}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
-function kpi(label,value,kind=''){return `<div class="kpi ${kind}"><span>${label}</span><strong>${value}</strong></div>`}
-function renderDashboard(){const p=current();const mods=modules.filter(m=>!['dashboard','manuals'].includes(m.id));$('#content').innerHTML=`<div class="grid cards">${mods.map(m=>`<div class="card module-card" data-module="${m.id}"><div class="bigico">${m.icon}</div><h3>${m.title}</h3><p class="muted">${m.desc}</p><span class="badge ok">Listo</span></div>`).join('')}</div><div class="grid two" style="margin-top:16px"><div class="card"><h3>Estado del proyecto</h3><div class="kpis">${kpi('Proyecto',esc(p.meta.name))}${kpi('Responsable',esc(p.meta.operator||'Sin definir'))}${kpi('Módulos',String(mods.length))}${kpi('Versión','3.0')}</div><p class="note">Esta versión integra módulos ampliados, gráficos técnicos tipo comercial, manuales por módulo, ejemplos precargados y exportación local.</p></div><div class="card"><h3>Salidas gráficas comerciales</h3><p>La app genera croquis en planta, perfiles tipo guitarra, curvas de nivel por interpolación, diagramas de masas, gráficos de secciones y vistas de radiación. Todo puede imprimirse desde el navegador.</p><div class="toolbar"><button class="btn" data-module="manuals">Ver manuales</button><button class="btn secondary" data-action="backupProject">Respaldo JSON</button></div></div></div>`}
-function renderCompass(){const d=current().modules.compass,r=calcCompass(false);$('#content').innerHTML=`<div class="card">${moduleHeader('compass','Levantamiento con brújula / poligonal','Rumbos, azimuts, proyecciones, error de cierre y corrección por Bowditch o tránsito.')}<div class="form-row">${select('compass.type','Tipo',[['closed','Cerrada'],['open','Abierta']])}${input('compass.startN','Norte inicial')}${input('compass.startE','Este inicial')}${select('compass.method','Ajuste',[['bowditch','Bowditch'],['transit','Tránsito']])}</div>${formulaBlock('ΔN = D·cos(Az), ΔE = D·sin(Az). Error lineal = √(ΣΔN² + ΣΔE²). Bowditch: Cᵢ = -Error·Dᵢ/ΣD.')}${genericTable('compass',[{field:'from',label:'Est.'},{field:'to',label:'A'},{field:'dist',label:'Distancia',type:'number'},{field:'rumbo',label:'Rumbo'},{field:'az',label:'Azimut opc.'}],d.rows)}<div class="kpis">${kpi('Longitud total',fmt(r.total)+' m')}${kpi('Error lineal',fmt(r.closure)+' m',r.closure<1?'ok':r.closure<5?'warn':'bad')}${kpi('Precisión relativa',Number.isFinite(r.precision)?'1:'+fmt(r.precision,0):'∞')}${kpi('Filas inválidas',String(r.warnings),r.warnings?'bad':'ok')}</div><div class="grid two"><div><h3>Croquis técnico en planta</h3><div class="graph">${plotPlan(r.pointsAdjusted.map(p=>({name:p.name,x:p.e,y:p.n})),d.type==='closed')}</div></div><div><h3>Cuadro calculado</h3>${resultTable([{field:'lado',label:'Lado'},{field:'az',label:'Az',num:1},{field:'dN',label:'ΔN',num:1},{field:'dE',label:'ΔE',num:1},{field:'adjN',label:'N corr.',num:1},{field:'adjE',label:'E corr.',num:1}],r.rows.map(x=>({...x,lado:x.from+'-'+x.to})))}</div></div></div>`}
-function calcCompass(store=true){const d=current().modules.compass;let sumN=0,sumE=0,total=0;const rows=d.rows.map(row=>{const dist=num(row.dist,NaN),az=has(row.az)?parseDMS(row.az):rumboToAz(row.rumbo);const valid=Number.isFinite(dist)&&Number.isFinite(az);const dN=valid?dist*Math.cos(rad(az)):NaN,dE=valid?dist*Math.sin(rad(az)):NaN;if(valid){sumN+=dN;sumE+=dE;total+=dist}return {...row,dist,az,dN,dE,cN:0,cE:0,adjDN:dN,adjDE:dE,adjN:NaN,adjE:NaN,valid}});const closure=Math.hypot(sumN,sumE),precision=closure?total/closure:Infinity;const sumAbsN=rows.reduce((a,r)=>a+(r.valid?Math.abs(r.dN):0),0),sumAbsE=rows.reduce((a,r)=>a+(r.valid?Math.abs(r.dE):0),0);if(d.type==='closed'){rows.forEach(r=>{if(!r.valid)return;if(d.method==='transit'){r.cN=sumAbsN?-sumN*Math.abs(r.dN)/sumAbsN:0;r.cE=sumAbsE?-sumE*Math.abs(r.dE)/sumAbsE:0}else{r.cN=total?-sumN*r.dist/total:0;r.cE=total?-sumE*r.dist/total:0}r.adjDN=r.dN+r.cN;r.adjDE=r.dE+r.cE})}let n=num(d.startN),e=num(d.startE);const adj=[{name:rows[0]?.from||'Inicio',n,e}];rows.forEach(r=>{if(r.valid){n+=r.adjDN;e+=r.adjDE;r.adjN=n;r.adjE=e;adj.push({name:r.to,n,e})}});const res={rows,total,sumN,sumE,closure,precision,pointsAdjusted:adj,warnings:rows.filter(r=>!r.valid).length};if(store){d.result=res;save();renderCompass();status('Brújula calculada')}return res}
-function renderLevelSimple(){const d=current().modules.levelSimple,r=calcLevelSimple(false);$('#content').innerHTML=`<div class="card">${moduleHeader('levelSimple','Nivelación simple','Método de altura de instrumento.',false)}<div class="form-row"><div class="field"><label>Punto conocido</label><input data-module-field="levelSimple.benchmark" value="${esc(d.benchmark)}"></div><div class="field"><label>Punto nuevo</label><input data-module-field="levelSimple.newPoint" value="${esc(d.newPoint)}"></div>${input('levelSimple.knownElev','Cota conocida')}${input('levelSimple.back','Vista atrás')}${input('levelSimple.fore','Vista adelante')}</div>${formulaBlock('HI = Cota conocida + Vista atrás. Cota nueva = HI - Vista adelante. Desnivel = Cota nueva - Cota conocida.')}<div class="kpis">${kpi('Altura instrumento',fmt(r.hi)+' m')}${kpi('Cota nueva',fmt(r.elev)+' m','ok')}${kpi('Desnivel',fmt(r.diff)+' m',r.diff>=0?'ok':'warn')}</div><p class="note">Paso a paso: se suma la vista atrás a la cota conocida para obtener HI y luego se resta la vista adelante para obtener la cota del nuevo punto.</p></div>`}
-function calcLevelSimple(store=true){const d=current().modules.levelSimple;const hi=num(d.knownElev)+num(d.back),elev=hi-num(d.fore),diff=elev-num(d.knownElev);const res={hi,elev,diff,rows:[{punto:d.benchmark,cota:num(d.knownElev),lectura:'VA '+d.back},{punto:d.newPoint,cota:elev,lectura:'VF '+d.fore}]};if(store){d.result=res;save();renderLevelSimple();status('Nivelación simple calculada')}return res}
-function levelCols(){return[{field:'point',label:'Punto'},{field:'bs',label:'VA',type:'number'},{field:'is',label:'VI',type:'number'},{field:'fs',label:'VF',type:'number'},{field:'dist',label:'Dist. acum.',type:'number'},{field:'note',label:'Nota'}]}
-function renderLevelCompound(){const d=current().modules.levelCompound,r=calcLevelCompound(false);$('#content').innerHTML=`<div class="card">${moduleHeader('levelCompound','Nivelación compuesta','Puntos de cambio, vistas atrás, intermedias y adelante.')}${input('levelCompound.startElev','Cota inicial')}${formulaBlock('HI = Cota punto + VA. Cota punto observado = HI - VI o VF. Verificación: ΣVA - ΣVF = Cota final - Cota inicial.')}${genericTable('levelCompound',levelCols(),d.rows)}<div class="kpis">${kpi('Σ VA',fmt(r.sumBS))}${kpi('Σ VF',fmt(r.sumFS))}${kpi('Cota final calc.',fmt(r.finalElev)+' m')}${kpi('Δ cotas',fmt(r.delta)+' m')}</div><div class="grid two"><div><h3>Perfil longitudinal tipo guitarra</h3><div class="graph tall">${plotProfileGuitar(r.rows)}</div></div><div><h3>Libreta calculada</h3>${resultTable([{field:'point',label:'Punto'},{field:'hi',label:'HI',num:1},{field:'elev',label:'Cota',num:1},{field:'dist',label:'Dist',num:1},{field:'note',label:'Nota'}],r.rows)}</div></div></div>`}
-function calcLevelCompound(store=true){const d=current().modules.levelCompound;let elev=num(d.startElev),hi=NaN,last=elev,sumBS=0,sumFS=0;const rows=d.rows.map((row,i)=>{let r={...row,dist:num(row.dist,i),hi:NaN,elev:NaN};if(i===0){r.elev=elev;last=elev}if(has(row.bs)){if(!Number.isFinite(r.elev))r.elev=last;hi=r.elev+num(row.bs);r.hi=hi;sumBS+=num(row.bs)}if(has(row.is)||has(row.fs)){const read=has(row.is)?num(row.is):num(row.fs);if(Number.isFinite(hi)){r.elev=hi-read;last=r.elev}if(has(row.fs))sumFS+=num(row.fs)}if(!Number.isFinite(r.hi)&&Number.isFinite(hi))r.hi=hi;return r});const finalElev=[...rows].reverse().find(x=>Number.isFinite(x.elev))?.elev??elev;const delta=finalElev-num(d.startElev);const res={rows,sumBS,sumFS,finalElev,delta};if(store){d.result=res;save();renderLevelCompound();status('Nivelación compuesta calculada')}return res}
-function renderLevelClosed(){const d=current().modules.levelClosed,r=calcLevelClosed(false);$('#content').innerHTML=`<div class="card">${moduleHeader('levelClosed','Nivelación cerrada','Cierre altimétrico, tolerancia y corrección proporcional.')}<div class="form-row">${input('levelClosed.startElev','Cota inicial')}${input('levelClosed.knownEnd','Cota final conocida')}${input('levelClosed.tolerance','Tolerancia')}${select('levelClosed.method','Corrección',[['distance','Por distancia'],['stations','Por estaciones']])}</div>${formulaBlock('Error = Cota calculada final - Cota final conocida. Correcciónᵢ = -Error·factor acumulado.')} ${genericTable('levelClosed',levelCols(),d.rows)}<div class="kpis">${kpi('Error cierre',fmt(r.error)+' m',Math.abs(r.error)<=num(d.tolerance)?'ok':'bad')}${kpi('Tolerancia',fmt(num(d.tolerance))+' m')}${kpi('Cota final corregida',fmt(r.correctedEnd)+' m','ok')}${kpi('Semáforo',r.ok?'Verde':'Rojo',r.ok?'ok':'bad')}</div><div class="grid two"><div><h3>Perfil corregido tipo guitarra</h3><div class="graph tall">${plotProfileGuitar(r.rows)}</div></div><div><h3>Cotas corregidas</h3>${resultTable([{field:'point',label:'Punto'},{field:'elev',label:'Cota calc.',num:1},{field:'correction',label:'Corrección',num:1},{field:'elevCorr',label:'Cota corr.',num:1}],r.rows)}</div></div></div>`}
-function calcLevelClosed(store=true){const d=current().modules.levelClosed;const temp={startElev:d.startElev,rows:d.rows};const old=current().modules.levelCompound;current().modules.levelCompound=temp;const base=calcLevelCompound(false);current().modules.levelCompound=old;const error=base.finalElev-num(d.knownEnd),totalDist=Math.max(...base.rows.map(r=>num(r.dist,0)),1),n=base.rows.length;const rows=base.rows.map((r,i)=>{const f=d.method==='stations'?(i/(n-1||1)):(num(r.dist,0)/totalDist);const correction=-error*f;return {...r,correction,elevCorr:Number.isFinite(r.elev)?r.elev+correction:NaN}});const ok=Math.abs(error)<=num(d.tolerance);const res={...base,error,totalDist,ok,rows,correctedEnd:rows.at(-1)?.elevCorr};if(store){d.result=res;save();renderLevelClosed();status('Nivelación cerrada calculada')}return res}
-function renderStation(){const d=current().modules.station,r=calcStation(false);$('#content').innerHTML=`<div class="card">${moduleHeader('station','Estación total','Radiación por ángulo horizontal, ángulo vertical/cenital y distancia inclinada.')}<div class="form-row"><div class="field"><label>Estación</label><input data-module-field="station.stationName" value="${esc(d.stationName)}"></div>${input('station.x','Este estación')}${input('station.y','Norte estación')}${input('station.z','Cota estación')}${input('station.azBase','Azimut base')}${input('station.hi','Altura instrumento')}</div>${formulaBlock('Az = Az base + AH. Si Z es cenital: DH = DI·sen(Z), ΔZ = DI·cos(Z)+HI-HP.')} ${genericTable('station',[{field:'point',label:'Punto'},{field:'angleH',label:'AH',type:'number'},{field:'angleV',label:'AV/Z',type:'number'},{field:'mode',label:'Modo'},{field:'slope',label:'DI',type:'number'},{field:'hp',label:'HP',type:'number'},{field:'code',label:'Código'},{field:'desc',label:'Desc.'}],d.rows)}<div class="grid two"><div><h3>Radiación en planta</h3><div class="graph">${plotPlan([{name:d.stationName,x:num(d.x),y:num(d.y),station:true},...r.rows.map(p=>({name:p.point,x:p.x,y:p.y}))],false)}</div></div><div><h3>Coordenadas calculadas</h3>${resultTable([{field:'point',label:'Punto'},{field:'az',label:'Az',num:1},{field:'dh',label:'DH',num:1},{field:'dz',label:'Desnivel',num:1},{field:'x',label:'Este',num:1},{field:'y',label:'Norte',num:1},{field:'z',label:'Cota',num:1}],r.rows)}</div></div></div>`}
-function calcStation(store=true){const d=current().modules.station;const rows=d.rows.map(row=>radiateRow(row,{x:num(d.x),y:num(d.y),z:num(d.z),azBase:parseDMS(d.azBase),hi:num(d.hi)}));const res={rows};if(store){d.result=res;save();renderStation();status('Estación total calculada')}return res}
-function radiateRow(row,base){const az=normAz(base.azBase+parseDMS(row.angleH||row.az||0));const di=num(row.slope||row.dist,NaN),av=parseDMS(row.angleV??row.vAngle??0);let dh,dz;if((row.mode||'zenith').toLowerCase().startsWith('zen')){dh=di*Math.sin(rad(av));dz=di*Math.cos(rad(av))+base.hi-num(row.hp,0)}else{dh=di*Math.cos(rad(av));dz=di*Math.sin(rad(av))+base.hi-num(row.hp,0)}const x=base.x+dh*Math.sin(rad(az)),y=base.y+dh*Math.cos(rad(az)),z=base.z+dz;return {...row,az,dh,dz,x,y,z}}
-function renderTheodolite(){const d=current().modules.theodolite,r=calcTheodolite(false);$('#content').innerHTML=`<div class="card">${moduleHeader('theodolite','Teodolito','Promedia lecturas directa/inversa y calcula radiación.')}<div class="form-row">${input('theodolite.x','Este estación')}${input('theodolite.y','Norte estación')}${input('theodolite.z','Cota estación')}${input('theodolite.azBase','Azimut base')}${input('theodolite.hi','Altura instrumento')}</div>${formulaBlock('Lectura inversa horizontal corregida = HI - 180°. AH promedio = media angular(PD, PI corregida). Az = Az base + AH promedio.')} ${genericTable('theodolite',[{field:'point',label:'Punto'},{field:'directH',label:'H directa',type:'number'},{field:'inverseH',label:'H inversa',type:'number'},{field:'directV',label:'V directa',type:'number'},{field:'inverseV',label:'V inversa',type:'number'},{field:'dist',label:'Distancia',type:'number'},{field:'hp',label:'Alt. señal',type:'number'},{field:'method',label:'Método'}],d.rows)}<div class="grid two"><div><h3>Gráfico polar / radiación</h3><div class="graph">${plotPlan([{name:'Est.',x:num(d.x),y:num(d.y),station:true},...r.rows.map(p=>({name:p.point,x:p.x,y:p.y}))],false)}</div></div><div><h3>Resultados</h3>${resultTable([{field:'point',label:'Punto'},{field:'hMean',label:'H prom.',num:1},{field:'vMean',label:'V prom.',num:1},{field:'az',label:'Az',num:1},{field:'x',label:'Este',num:1},{field:'y',label:'Norte',num:1},{field:'z',label:'Cota',num:1}],r.rows)}</div></div></div>`}
-function calcTheodolite(store=true){const d=current().modules.theodolite;const rows=d.rows.map(row=>{const invH=normAz(num(row.inverseH)-180),hMean=angleMean(num(row.directH),invH),vMean=(num(row.directV)+(360-num(row.inverseV)))/2;const az=normAz(num(d.azBase)+hMean),dh=num(row.dist),dz=dh*Math.tan(rad(vMean))+num(d.hi)-num(row.hp);const x=num(d.x)+dh*Math.sin(rad(az)),y=num(d.y)+dh*Math.cos(rad(az)),z=num(d.z)+dz;return {...row,hMean,vMean,az,dh,dz,x,y,z}});const res={rows};if(store){d.result=res;save();renderTheodolite();status('Teodolito calculado')}return res}
-function renderTacheometry(){const d=current().modules.tacheometry,r=calcTacheometry(false);$('#content').innerHTML=`<div class="card">${moduleHeader('tacheometry','Taquimetría','Lecturas de mira, intervalo estadimétrico, distancia, desnivel, cota y coordenadas.')}<div class="form-row">${input('tacheometry.x','Este estación')}${input('tacheometry.y','Norte estación')}${input('tacheometry.z','Cota estación')}${input('tacheometry.azBase','Azimut base')}${input('tacheometry.hi','Altura instrumento')}${input('tacheometry.K','Constante K')}${input('tacheometry.C','Constante C')}</div>${formulaBlock('s = LS - LI. DH ≈ K·s·cos²(α) + C·cos(α). ΔH = DH·tan(α) + HI - lectura media.')} ${genericTable('tacheometry',[{field:'point',label:'Punto'},{field:'upper',label:'LS',type:'number'},{field:'middle',label:'LM',type:'number'},{field:'lower',label:'LI',type:'number'},{field:'az',label:'AH/Az',type:'number'},{field:'vAngle',label:'Ángulo vertical',type:'number'},{field:'code',label:'Código'}],d.rows)}<div class="grid two"><div><h3>Radiación taquimétrica</h3><div class="graph">${plotPlan([{name:'Est.',x:num(d.x),y:num(d.y),station:true},...r.rows.map(p=>({name:p.point,x:p.x,y:p.y}))],false)}</div></div><div><h3>Tabla calculada</h3>${resultTable([{field:'point',label:'Punto'},{field:'s',label:'s',num:1},{field:'dh',label:'DH',num:1},{field:'dz',label:'Desnivel',num:1},{field:'x',label:'Este',num:1},{field:'y',label:'Norte',num:1},{field:'z',label:'Cota',num:1}],r.rows)}</div></div></div>`}
-function calcTacheometry(store=true){const d=current().modules.tacheometry;const rows=d.rows.map(row=>{const s=num(row.upper)-num(row.lower),a=parseDMS(row.vAngle),dh=num(d.K)*s*Math.cos(rad(a))**2+num(d.C)*Math.cos(rad(a)),dz=dh*Math.tan(rad(a))+num(d.hi)-num(row.middle),az=normAz(num(d.azBase)+parseDMS(row.az));const x=num(d.x)+dh*Math.sin(rad(az)),y=num(d.y)+dh*Math.cos(rad(az)),z=num(d.z)+dz;return {...row,s,dh,dz,az,x,y,z}});const res={rows};if(store){d.result=res;save();renderTacheometry();status('Taquimetría calculada')}return res}
-function renderCoords(){const d=current().modules.coords,r=calcCoords(false);$('#content').innerHTML=`<div class="card">${moduleHeader('coords','Coordenadas y conversiones','Herramientas rápidas de ángulos, coordenadas y pendientes.',false)}${formulaBlock('Distancia = √(ΔE² + ΔN²). Azimut = atan2(ΔE, ΔN). Pendiente % = ΔH/DH·100.')}<div class="form-row">${input('coords.rumbo','Rumbo','text')}${input('coords.azimuth','Azimut')}${input('coords.dms','GMS','text')}${input('coords.decimalAngle','Grado decimal')}${input('coords.x1','E1')}${input('coords.y1','N1')}${input('coords.x2','E2')}${input('coords.y2','N2')}${input('coords.radX','E radiación')}${input('coords.radY','N radiación')}${input('coords.radAz','Az radiación')}${input('coords.radDist','Dist radiación')}${input('coords.elev1','Cota 1')}${input('coords.elev2','Cota 2')}${input('coords.distSlope','Dist. horizontal')}</div><div class="kpis">${kpi('Rumbo → Azimut',fmt(r.azFromRumbo)+'°')}${kpi('Azimut → Rumbo',esc(r.rumboFromAz))}${kpi('GMS → Decimal',fmt(r.decFromDms)+'°')}${kpi('Decimal → GMS',esc(r.dmsFromDec))}${kpi('Distancia 1-2',fmt(r.dist)+' m')}${kpi('Azimut 1-2',fmt(r.az12)+'°')}${kpi('Punto radiado E,N',`${fmt(r.radX)}, ${fmt(r.radY)}`)}${kpi('Pendiente',fmt(r.slopePct)+' %')}</div></div>`}
-function calcCoords(store=true){const d=current().modules.coords;const dx=num(d.x2)-num(d.x1),dy=num(d.y2)-num(d.y1),dist=Math.hypot(dx,dy),az12=normAz(deg(Math.atan2(dx,dy))),azr=normAz(parseDMS(d.radAz)),rd=num(d.radDist),dz=num(d.elev2)-num(d.elev1);const res={azFromRumbo:rumboToAz(d.rumbo),rumboFromAz:azToRumbo(d.azimuth),decFromDms:parseDMS(d.dms),dmsFromDec:toDMS(num(d.decimalAngle)),dist,az12,radX:num(d.radX)+rd*Math.sin(rad(azr)),radY:num(d.radY)+rd*Math.cos(rad(azr)),slopePct:dz/(num(d.distSlope)||1)*100,slopeDeg:deg(Math.atan(dz/(num(d.distSlope)||1))),rows:[{concepto:'Distancia',valor:dist},{concepto:'Azimut',valor:az12},{concepto:'Pendiente %',valor:dz/(num(d.distSlope)||1)*100}]};if(store){d.result=res;save();renderCoords();status('Conversiones calculadas')}return res}
-function renderAreas(){const d=current().modules.areas,r=calcAreas(false);$('#content').innerHTML=`<div class="card">${moduleHeader('areas','Áreas por coordenadas','Método de Gauss, perímetro y conversión de unidades.')} ${formulaBlock('A = 1/2 · |Σ(Eᵢ·Nᵢ₊₁ - Nᵢ·Eᵢ₊₁)|.')} ${genericTable('areas',[{field:'name',label:'Vértice'},{field:'x',label:'Este',type:'number'},{field:'y',label:'Norte',type:'number'},{field:'z',label:'Cota',type:'number'}],d.rows)}<div class="kpis">${kpi('Área',fmt(r.area)+' m²','ok')}${kpi('Hectáreas',fmt(r.ha)+' ha')}${kpi('km²',fmt(r.km2)+' km²')}${kpi('Perímetro',fmt(r.perimeter)+' m')}</div><div class="graph">${plotPlan(r.points,true)}</div></div>`}
-function calcAreas(store=true){const d=current().modules.areas;const pts=d.rows.map(r=>({name:r.name,x:num(r.x,NaN),y:num(r.y,NaN),z:num(r.z,0)})).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));let s=0,per=0;for(let i=0;i<pts.length;i++){const a=pts[i],b=pts[(i+1)%pts.length];s+=a.x*b.y-a.y*b.x;per+=Math.hypot(b.x-a.x,b.y-a.y)}const area=Math.abs(s)/2,res={area,ha:area/10000,km2:area/1e6,perimeter:per,points:pts,rows:pts};if(store){d.result=res;save();renderAreas();status('Área calculada')}return res}
-function renderContours(){const d=current().modules.contours,r=calcContours(false);$('#content').innerHTML=`<div class="card">${moduleHeader('contours','Curvas de nivel','Interpolación IDW referencial, nube de puntos y curvas básicas.')}<div class="form-row">${input('contours.interval','Equidistancia')}</div>${formulaBlock('Se genera una malla regular y se estima Z por IDW: Z = Σ(zᵢ / dᵢ²) / Σ(1 / dᵢ²). Luego se trazan isolíneas por nivel.')} ${genericTable('contours',[{field:'point',label:'Punto'},{field:'x',label:'X',type:'number'},{field:'y',label:'Y',type:'number'},{field:'z',label:'Z',type:'number'}],d.rows)}<div class="grid two"><div><h3>Mapa de curvas de nivel</h3><div class="graph">${plotContours(d.rows,num(d.interval))}</div></div><div><h3>Niveles generados</h3><div class="kpis">${kpi('Cota mínima',fmt(r.minZ)+' m')}${kpi('Cota máxima',fmt(r.maxZ)+' m')}${kpi('N° curvas',String(r.levels.length))}${kpi('Equidistancia',fmt(num(d.interval))+' m')}</div><p class="note">Las curvas son referenciales para análisis académico. Para uso profesional debe densificarse el levantamiento y confirmar datum/sistema de referencia.</p></div></div></div>`}
-function calcContours(store=true){const d=current().modules.contours;const zs=d.rows.map(r=>num(r.z,NaN)).filter(Number.isFinite);const minZ=Math.min(...zs),maxZ=Math.max(...zs),int=num(d.interval,1)||1;const levels=[];for(let z=Math.ceil(minZ/int)*int;z<=maxZ+1e-9;z+=int)levels.push(z);const res={rows:d.rows,minZ,maxZ,levels};if(store){d.result=res;save();renderContours();status('Curvas generadas')}return res}
-function renderProfiles(){const d=current().modules.profiles,r=calcProfiles(false);$('#content').innerHTML=`<div class="card">${moduleHeader('profiles','Perfiles longitudinales y transversales','Perfil tipo guitarra con terreno, rasante, corte y relleno.')} ${formulaBlock('Pendiente = Δcota / Δprogresiva · 100. Corte = max(Terreno - Rasante, 0). Relleno = max(Rasante - Terreno, 0).')} ${genericTable('profiles',[{field:'prog',label:'Progresiva',type:'number'},{field:'terrain',label:'Terreno',type:'number'},{field:'grade',label:'Rasante',type:'number'}],d.rows)}<div class="grid two"><div><h3>Perfil tipo guitarra</h3><div class="graph tall">${plotRoadProfile(r.rows)}</div></div><div><h3>Corte / relleno</h3>${resultTable([{field:'prog',label:'Prog.',num:1},{field:'terrain',label:'Terreno',num:1},{field:'grade',label:'Rasante',num:1},{field:'cut',label:'Corte',num:1},{field:'fill',label:'Relleno',num:1},{field:'slope',label:'Pendiente %',num:1}],r.rows)}</div></div></div>`}
-function calcProfiles(store=true){const d=current().modules.profiles;const rows=d.rows.map((r,i,arr)=>{const cut=Math.max(num(r.terrain)-num(r.grade),0),fill=Math.max(num(r.grade)-num(r.terrain),0);let slope=NaN;if(i>0){const prev=arr[i-1];slope=(num(r.grade)-num(prev.grade))/(num(r.prog)-num(prev.prog)||1)*100}return {...r,prog:num(r.prog),terrain:num(r.terrain),grade:num(r.grade),cut,fill,slope}});const res={rows};if(store){d.result=res;save();renderProfiles();status('Perfil calculado')}return res}
-function renderVolumes(){const d=current().modules.volumes,r=calcVolumes(false);$('#content').innerHTML=`<div class="card">${moduleHeader('volumes','Movimiento de tierras / volúmenes','Áreas medias, prismoidal básico y diagrama de masas.')}<div class="form-row">${select('volumes.method','Método',[['average','Áreas medias'],['prismoidal','Prismoidal simplificado']])}</div>${formulaBlock('Áreas medias: V = ((A₁ + A₂) / 2) · L. Balance acumulado = ΣVcorte - ΣVrelleno.')} ${genericTable('volumes',[{field:'section',label:'Sección'},{field:'dist',label:'Distancia',type:'number'},{field:'areaCut',label:'Área corte',type:'number'},{field:'areaFill',label:'Área relleno',type:'number'}],d.rows)}<div class="kpis">${kpi('Vol. corte',fmt(r.totalCut)+' m³','ok')}${kpi('Vol. relleno',fmt(r.totalFill)+' m³','warn')}${kpi('Balance',fmt(r.balance)+' m³',r.balance>=0?'ok':'warn')}</div><div class="grid two"><div><h3>Diagrama de masas</h3><div class="graph">${plotMassHaul(r.rows)}</div></div><div><h3>Volúmenes parciales</h3>${resultTable([{field:'section',label:'Tramo'},{field:'cutVol',label:'Corte m³',num:1},{field:'fillVol',label:'Relleno m³',num:1},{field:'mass',label:'Masa acum.',num:1}],r.rows)}</div></div></div>`}
-function calcVolumes(store=true){const d=current().modules.volumes;let totalCut=0,totalFill=0,mass=0;const rows=d.rows.map((r,i,arr)=>{let cutVol=0,fillVol=0;if(i>0){const prev=arr[i-1],L=num(r.dist)-num(prev.dist);cutVol=(num(prev.areaCut)+num(r.areaCut))/2*L;fillVol=(num(prev.areaFill)+num(r.areaFill))/2*L;totalCut+=cutVol;totalFill+=fillVol;mass+=cutVol-fillVol}return {...r,dist:num(r.dist),cutVol,fillVol,mass}});const res={rows,totalCut,totalFill,balance:totalCut-totalFill};if(store){d.result=res;save();renderVolumes();status('Volúmenes calculados')}return res}
-function renderCurves(){const d=current().modules.curves,r=calcCurves(false);$('#content').innerHTML=`<div class="card">${moduleHeader('curves','Curvas horizontales y verticales','Elementos geométricos para replanteo. ',false)}<h3>Curva horizontal</h3><div class="form-row">${input('curves.h.R','Radio R')}${input('curves.h.delta','Ángulo Δ')}${input('curves.h.PI','Progresiva PI')}</div><h3>Curva vertical</h3><div class="form-row">${input('curves.v.g1','Pendiente inicial %')}${input('curves.v.g2','Pendiente final %')}${input('curves.v.L','Longitud')}${input('curves.v.PIV','Prog. PIV')}${input('curves.v.elevPIV','Cota PIV')}${input('curves.v.step','Intervalo')}</div>${formulaBlock('Horizontal: T = R·tan(Δ/2), L = πRΔ/180. Vertical parabólica: y = PVC + g₁x + ((g₂-g₁)/(2L))x².')}<div class="grid two"><div><h3>Elementos horizontales</h3><div class="kpis">${kpi('T',fmt(r.h.T))}${kpi('L curva',fmt(r.h.L))}${kpi('PC',fmt(r.h.PC))}${kpi('PT',fmt(r.h.PT))}</div><div class="graph">${plotCurveSketch(r.h)}</div></div><div><h3>Tabla vertical</h3>${resultTable([{field:'prog',label:'Prog.',num:1},{field:'x',label:'x',num:1},{field:'elev',label:'Cota',num:1}],r.v.table)}<div class="graph">${plotVerticalCurve(r.v.table)}</div></div></div></div>`}
-function calcCurves(store=true){const d=current().modules.curves,h=d.h,v=d.v,R=num(h.R),D=num(h.delta),PI=num(h.PI);const T=R*Math.tan(rad(D/2)),L=Math.PI*R*D/180,CL=2*R*Math.sin(rad(D/2)),E=R*(1/Math.cos(rad(D/2))-1),M=R*(1-Math.cos(rad(D/2))),PC=PI-T,PT=PC+L;const g1=num(v.g1)/100,g2=num(v.g2)/100,LV=num(v.L),PVC=num(v.PIV)-LV/2,ePVC=num(v.elevPIV)-g1*LV/2,step=Math.max(1,num(v.step,20));const table=[];for(let x=0;x<=LV+1e-9;x+=step){table.push({prog:PVC+x,x,elev:ePVC+g1*x+((g2-g1)/(2*LV))*x*x})}if(table.at(-1)?.x<LV)table.push({prog:PVC+LV,x:LV,elev:ePVC+g1*LV+((g2-g1)/(2*LV))*LV*LV});const res={h:{R,D,T,L,CL,E,M,PC,PT,PI},v:{PVC,PVT:PVC+LV,table}};if(store){d.result=res;save();renderCurves();status('Curvas calculadas')}return res}
-function renderGnss(){const d=current().modules.gnss,r=calcGnss(false);$('#content').innerHTML=`<div class="card">${moduleHeader('gnss','GNSS / GPS topográfico','Coordenadas geográficas, altura elipsoidal, ondulación y altura ortométrica.')}<div class="form-row"><div class="field"><label>Datum</label><input data-module-field="gnss.datum" value="${esc(d.datum)}"></div><div class="field"><label>Sistema / zona</label><input data-module-field="gnss.zone" value="${esc(d.zone)}"></div></div>${formulaBlock('Altura ortométrica aproximada: H = h - N, donde h es altura elipsoidal y N la ondulación geoidal ingresada.')} ${genericTable('gnss',[{field:'point',label:'Punto'},{field:'lat',label:'Latitud',type:'number'},{field:'lon',label:'Longitud',type:'number'},{field:'hEll',label:'h elipsoidal',type:'number'},{field:'N',label:'Ondulación N',type:'number'},{field:'code',label:'Código'}],d.rows)}<div class="grid two"><div><h3>Puntos GNSS</h3><div class="graph">${plotPlan(r.rows.map(x=>({name:x.point,x:x.lon,y:x.lat})),false)}</div></div><div><h3>Alturas</h3>${resultTable([{field:'point',label:'Punto'},{field:'latDms',label:'Lat DMS'},{field:'lonDms',label:'Lon DMS'},{field:'H',label:'H ortométrica',num:1}],r.rows)}<p class="note">Advertencia: para entregar planos oficiales debe confirmarse datum, geoid model, zona UTM y precisión del equipo.</p></div></div></div>`}
-function calcGnss(store=true){const d=current().modules.gnss;const rows=d.rows.map(r=>({...r,lat:num(r.lat),lon:num(r.lon),H:num(r.hEll)-num(r.N),latDms:toDMS(num(r.lat)),lonDms:toDMS(num(r.lon))}));const res={rows};if(store){d.result=res;save();renderGnss();status('GNSS procesado')}return res}
-function renderFieldbook(){const d=current().modules.fieldbook,r=calcFieldbook(false);$('#content').innerHTML=`<div class="card">${moduleHeader('fieldbook','Libreta de campo digital','Registro ordenado del trabajo de campo.',true)}<div class="form-row"><div class="field"><label>Fecha</label><input type="date" data-module-field="fieldbook.date" value="${esc(d.date)}"></div><div class="field"><label>Operador</label><input data-module-field="fieldbook.operator" value="${esc(d.operator)}"></div><div class="field"><label>Equipo</label><input data-module-field="fieldbook.equipment" value="${esc(d.equipment)}"></div><div class="field"><label>Clima</label><input data-module-field="fieldbook.weather" value="${esc(d.weather)}"></div><div class="field"><label>Ubicación</label><input data-module-field="fieldbook.location" value="${esc(d.location)}"></div></div><div class="form-row"><div class="field"><label>Observaciones</label><textarea data-module-field="fieldbook.notes">${esc(d.notes)}</textarea></div><div class="field"><label>Croquis / descripción</label><textarea data-module-field="fieldbook.sketch">${esc(d.sketch)}</textarea></div></div>${genericTable('fieldbook',[{field:'time',label:'Hora'},{field:'point',label:'Punto'},{field:'activity',label:'Actividad'},{field:'obs',label:'Observación'}],d.rows)}<div class="kpis">${kpi('Registros',String(r.count))}${kpi('Operador',esc(d.operator||current().meta.operator||'No definido'))}${kpi('Ubicación',esc(d.location||'No definida'))}</div></div>`}
-function calcFieldbook(store=true){const d=current().modules.fieldbook;const res={rows:d.rows,count:d.rows.length,meta:d};if(store){d.result=res;save();renderFieldbook();status('Libreta actualizada')}return res}
-const manualText={
-compass:['Ingrese estaciones, distancias y rumbo o azimut.','Calcule azimut por rumbo cuadrantal.','Obtenga ΔN y ΔE.','Acumule coordenadas desde el punto inicial.','Si la poligonal es cerrada, distribuya el error por Bowditch o tránsito.'],
-levelSimple:['Ingrese cota conocida, vista atrás y vista adelante.','Calcule HI = cota conocida + VA.','Calcule cota nueva = HI - VF.','El desnivel es cota nueva menos cota conocida.'],
-levelCompound:['Registre VA en el punto de cota conocida.','Calcule HI para cada estación.','A cada VI o VF réstele la lectura a la HI.','En punto de cambio, la cota calculada pasa a ser base de una nueva HI.','Verifique ΣVA - ΣVF.'],
-levelClosed:['Resuelva como nivelación compuesta.','Compare cota final calculada con cota final conocida.','Obtenga error de cierre.','Aplique corrección proporcional por distancia o por estaciones.','Revise semáforo de tolerancia.'],
-station:['Ingrese coordenadas de estación y azimut base.','Para cada punto, sume AH al azimut base.','Con distancia inclinada y ángulo cenital calcule DH y desnivel.','Proyecte coordenadas X/Y y calcule Z.'],
-theodolite:['Corrija lectura inversa horizontal restando 180°.','Promedie lectura directa e inversa corregida.','Sume al azimut base.','Radie coordenadas con distancia y ángulo vertical.'],
-tacheometry:['Calcule intervalo estadimétrico s = LS - LI.','Calcule DH con K·s·cos²α.','Calcule desnivel con DH·tanα + HI - LM.','Proyecte coordenadas según azimut.'],
-coords:['Use las herramientas para convertir rumbo/azimut y DMS/decimal.','Entre dos coordenadas calcule ΔE, ΔN, distancia y azimut.','Para radiación use E = E0 + D·sen Az y N = N0 + D·cos Az.'],
-areas:['Ingrese vértices en orden.','Aplique la suma cruzada de Gauss.','El área es la mitad del valor absoluto de la diferencia.','El perímetro suma distancias entre vértices consecutivos.'],
-contours:['Importe puntos X,Y,Z.','Defina equidistancia.','La app interpola una malla IDW.','Las isolíneas se dibujan como curvas de nivel básicas.'],
-profiles:['Ingrese progresiva, cota terreno y rasante.','Calcule corte si terreno > rasante.','Calcule relleno si rasante > terreno.','Revise el perfil tipo guitarra.'],
-volumes:['Ingrese áreas de corte/relleno por sección.','Calcule volumen entre secciones por áreas medias.','Acumule corte menos relleno.','Revise diagrama de masas.'],
-curves:['Para curva horizontal calcule T, L, PC y PT.','Para curva vertical use parábola con g1, g2 y L.','Genere tabla de replanteo por intervalo.'],
-gnss:['Ingrese latitud, longitud, h elipsoidal y ondulación N.','Calcule H = h - N.','Revise datum y sistema antes de usar en plano.'],
-fieldbook:['Registre fecha, operador, equipo, clima y ubicación.','Anote actividades por hora y punto.','Exporte como reporte de campo.']
-};
-function renderManuals(){const keys=modules.filter(m=>!['dashboard','manuals'].includes(m.id));const active=state.manualTab||'compass';const m=modules.find(x=>x.id===active);$('#content').innerHTML=`<div class="card"><div class="section-title"><div><h3>Manuales por módulo</h3><small>Uso, ejemplo precargado y cálculo paso a paso.</small></div><span class="badge">Manual integrado</span></div><div class="tabs">${keys.map(x=>`<button class="tab ${x.id===active?'active':''}" data-action="manualTab" data-target="${x.id}">${x.title}</button>`).join('')}</div><div class="manual-box"><h3>${m.title}</h3><p>${m.desc}</p><h4>Cómo usar el módulo</h4><ol>${(manualText[active]||[]).map(s=>`<li>${s}</li>`).join('')}</ol><h4>Ejemplo precargado</h4>${manualExample(active)}<div class="toolbar no-print"><button class="btn" data-module="${active}">Abrir módulo</button><button class="btn secondary" data-action="calc" data-calc="${active}">Calcular ejemplo</button></div></div></div>`}
-function manualExample(key){try{const calc=calcByKey(key,false);const rows=getExportRows(key);return `<p>El ejemplo ya está cargado en el proyecto actual. Al presionar calcular, se obtienen los resultados principales mostrados abajo:</p>${rows.length?resultTable(Object.keys(rows[0]).slice(0,8).map(k=>({field:k,label:k,num:typeof rows[0][k]==='number'})),rows.slice(0,8)):'<p class="muted">Este módulo genera un reporte narrativo.</p>'}`}catch(e){return `<p class="muted">Abra el módulo para revisar sus datos de entrada.</p>`}}
-function calcByKey(key,store=true){const map={compass:calcCompass,levelSimple:calcLevelSimple,levelCompound:calcLevelCompound,levelClosed:calcLevelClosed,station:calcStation,theodolite:calcTheodolite,tacheometry:calcTacheometry,coords:calcCoords,areas:calcAreas,contours:calcContours,profiles:calcProfiles,volumes:calcVolumes,curves:calcCurves,gnss:calcGnss,fieldbook:calcFieldbook};return (map[key]||(()=>({})))(store)}
-function plotPlan(points,closed=false){points=points.filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y));if(!points.length)return '<div class="empty">Sin puntos válidos.</div>';const xs=points.map(p=>p.x),ys=points.map(p=>p.y),minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys),W=900,H=380,padL=70,padR=36,padT=34,padB=58;const span=Math.max(maxX-minX||1,maxY-minY||1),cx=(minX+maxX)/2,cy=(minY+maxY)/2;const sx=x=>padL+((x-(cx-span/2))/span)*(W-padL-padR),sy=y=>H-padB-((y-(cy-span/2))/span)*(H-padT-padB);const pts=points.map(p=>`${sx(p.x)},${sy(p.y)}`).join(' '),poly=closed?pts+' '+`${sx(points[0].x)},${sy(points[0].y)}`:pts;const station=points.find(p=>p.station);const rays=station?points.filter(p=>p!==station).map(p=>`<line x1="${sx(station.x)}" y1="${sy(station.y)}" x2="${sx(p.x)}" y2="${sy(p.y)}" stroke="var(--line)" stroke-dasharray="5 5"/>`).join(''):'';let grid='';for(let i=0;i<=6;i++){const x=padL+i*(W-padL-padR)/6,y=padT+i*(H-padT-padB)/6;grid+=`<line x1="${x}" y1="${padT}" x2="${x}" y2="${H-padB}" stroke="var(--grid)"/><line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="var(--grid)"/>`;}return `<svg viewBox="0 0 ${W} ${H}">${grid}<rect x="${padL}" y="${padT}" width="${W-padL-padR}" height="${H-padT-padB}" fill="none" stroke="var(--line)"/><g transform="translate(${W-42},48)"><line x1="0" y1="24" x2="0" y2="-12" stroke="var(--text)" stroke-width="2"/><polygon points="0,-20 -7,-7 7,-7" fill="var(--text)"/><text x="0" y="-26" text-anchor="middle" fill="var(--text)" font-size="12" font-weight="700">N</text></g>${closed?`<polygon points="${poly}" fill="var(--primary)" opacity="0.10"/>`:''}${rays}<polyline points="${poly}" fill="none" stroke="var(--primary)" stroke-width="3"/>${points.map((p,i)=>`<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="${p.station?7:5}" fill="${p.station?'var(--danger)':'var(--accent)'}"/><text x="${sx(p.x)+8}" y="${sy(p.y)-8}" fill="var(--text)" font-size="12" font-weight="700">${esc(p.name||('P'+(i+1)))}</text><text x="${sx(p.x)+8}" y="${sy(p.y)+8}" fill="var(--muted)" font-size="10">E:${fmt(p.x)} N:${fmt(p.y)}</text>`).join('')}<text x="18" y="25" fill="var(--muted)" font-size="12">Vista en planta - retícula referencial</text></svg>`}
-function plotProfileGuitar(rows){const pts=rows.filter(r=>Number.isFinite(r.elev)||Number.isFinite(r.elevCorr)).map((r,i)=>({x:num(r.dist,i),y:Number.isFinite(r.elevCorr)?r.elevCorr:r.elev,name:r.point||('P'+(i+1)),note:r.note||'',read:has(r.bs)?'VA '+r.bs:has(r.is)?'VI '+r.is:has(r.fs)?'VF '+r.fs:''}));if(!pts.length)return '<div class="empty">Sin perfil.</div>';return profileSvg(pts,[{label:'PUNTO',val:p=>p.name},{label:'PROG.',val:p=>fmt(p.x)},{label:'COTA',val:p=>fmt(p.y)},{label:'LECTURA',val:p=>p.read},{label:'OBS.',val:p=>p.note}],null)}
-function plotRoadProfile(rows){const pts=rows.map(r=>({x:r.prog,y:r.terrain,name:String(r.prog),grade:r.grade,cut:r.cut,fill:r.fill}));return profileSvg(pts,[{label:'PROG.',val:p=>fmt(p.x)},{label:'TERRENO',val:p=>fmt(p.y)},{label:'RASANTE',val:p=>fmt(p.grade)},{label:'CORTE',val:p=>fmt(p.cut)},{label:'RELLENO',val:p=>fmt(p.fill)}],rows.map(r=>({x:r.prog,y:r.grade})))}
-function profileSvg(pts,bands,gradePts){const allY=[...pts.map(p=>p.y),...(gradePts?gradePts.map(p=>p.y):[])],xs=pts.map(p=>p.x),minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...allY),maxY=Math.max(...allY),W=940,H=455,padL=68,padR=28,padT=28,padB=170,plotH=H-padT-padB,spanX=maxX-minX||1,spanY=maxY-minY||1;const sx=x=>padL+(x-minX)/spanX*(W-padL-padR),sy=y=>padT+plotH-(y-minY)/spanY*plotH;let grid='';for(let i=0;i<=5;i++){const y=padT+i*plotH/5;grid+=`<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="var(--grid)"/><text x="${padL-8}" y="${y+4}" text-anchor="end" fill="var(--muted)" font-size="10">${fmt(maxY-i*spanY/5)}</text>`}pts.forEach(p=>{grid+=`<line x1="${sx(p.x)}" y1="${padT}" x2="${sx(p.x)}" y2="${plotH+padT}" stroke="var(--grid)"/>`});const terrain=pts.map(p=>`${sx(p.x)},${sy(p.y)}`).join(' '),grade=gradePts?gradePts.map(p=>`${sx(p.x)},${sy(p.y)}`).join(' '):'';const bandY=padT+plotH+12,bandH=26,colW=(W-padL-padR)/(pts.length||1);return `<svg viewBox="0 0 ${W} ${H}"><rect width="${W}" height="${H}" fill="transparent"/>${grid}<rect x="${padL}" y="${padT}" width="${W-padL-padR}" height="${plotH}" fill="none" stroke="var(--line)"/><polyline points="${terrain}" fill="none" stroke="var(--primary)" stroke-width="3"/>${grade?`<polyline points="${grade}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-dasharray="8 5"/>`:''}${pts.map(p=>`<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="4" fill="var(--primary)"/>`).join('')}<text x="18" y="24" fill="var(--muted)" font-size="12">Perfil longitudinal tipo guitarra</text>${grade?'<text x="760" y="24" fill="var(--accent)" font-size="12">Rasante</text><text x="690" y="24" fill="var(--primary)" font-size="12">Terreno</text>':''}${bands.map((b,bi)=>`<g><rect x="8" y="${bandY+bi*bandH}" width="${padL-8}" height="${bandH}" fill="rgba(127,127,127,.08)" stroke="var(--line)"/><text x="${padL-10}" y="${bandY+bi*bandH+17}" text-anchor="end" fill="var(--text)" font-size="10" font-weight="700">${b.label}</text>${pts.map((p,i)=>`<rect x="${padL+i*colW}" y="${bandY+bi*bandH}" width="${colW}" height="${bandH}" fill="transparent" stroke="var(--line)"/><text x="${padL+i*colW+colW/2}" y="${bandY+bi*bandH+17}" text-anchor="middle" fill="var(--text)" font-size="10">${esc(b.val(p))}</text>`).join('')}</g>`).join('')}</svg>`}
-function idw(points,x,y){let sw=0,sz=0;for(const p of points){const d=Math.hypot(x-p.x,y-p.y)||0.001,w=1/(d*d);sw+=w;sz+=p.z*w}return sz/sw}
-function plotContours(rows,interval){const pts=rows.map(r=>({name:r.point,x:num(r.x),y:num(r.y),z:num(r.z)})).filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z));if(!pts.length)return '<div class="empty">Sin puntos.</div>';const W=900,H=380,pad=45,xs=pts.map(p=>p.x),ys=pts.map(p=>p.y),zs=pts.map(p=>p.z),minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys),minZ=Math.min(...zs),maxZ=Math.max(...zs);const sx=x=>pad+(x-minX)/(maxX-minX||1)*(W-2*pad),sy=y=>H-pad-(y-minY)/(maxY-minY||1)*(H-2*pad);let levels=[];for(let z=Math.ceil(minZ/interval)*interval;z<=maxZ+1e-9;z+=interval)levels.push(z);let lines='';levels.forEach((lv,li)=>{const ptsNear=[];for(let gx=0;gx<=30;gx++){for(let gy=0;gy<=18;gy++){const x=minX+(maxX-minX)*gx/30,y=minY+(maxY-minY)*gy/18,z=idw(pts,x,y);if(Math.abs(z-lv)<interval*.18)ptsNear.push({x,y})}}lines+=ptsNear.map(p=>`<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="1.6" fill="var(--primary)" opacity="${.35+.5*li/(levels.length||1)}"/>`).join('');if(ptsNear[0])lines+=`<text x="${sx(ptsNear[0].x)+4}" y="${sy(ptsNear[0].y)-4}" fill="var(--primary)" font-size="10">${fmt(lv)}</text>`});return `<svg viewBox="0 0 ${W} ${H}"><rect x="${pad}" y="${pad}" width="${W-2*pad}" height="${H-2*pad}" fill="rgba(127,127,127,.05)" stroke="var(--line)"/>${lines}${pts.map(p=>`<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="5" fill="var(--accent)"/><text x="${sx(p.x)+7}" y="${sy(p.y)-7}" fill="var(--text)" font-size="11">${esc(p.name)} ${fmt(p.z)}</text>`).join('')}<text x="18" y="24" fill="var(--muted)" font-size="12">Curvas de nivel por interpolación IDW referencial</text></svg>`}
-function plotMassHaul(rows){const pts=rows.map(r=>({x:r.dist,y:r.mass,name:r.section}));if(!pts.length)return '<div class="empty">Sin datos.</div>';const xs=pts.map(p=>p.x),ys=pts.map(p=>p.y),minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys,0),maxY=Math.max(...ys,0),W=900,H=380,pad=48;const sx=x=>pad+(x-minX)/(maxX-minX||1)*(W-2*pad),sy=y=>H-pad-(y-minY)/(maxY-minY||1)*(H-2*pad);const base=sy(0),pl=pts.map(p=>`${sx(p.x)},${sy(p.y)}`).join(' ');return `<svg viewBox="0 0 ${W} ${H}"><line x1="${pad}" y1="${base}" x2="${W-pad}" y2="${base}" stroke="var(--line)" stroke-width="2"/><polyline points="${pl}" fill="none" stroke="var(--primary)" stroke-width="3"/>${pts.map(p=>`<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="4" fill="${p.y>=0?'var(--success)':'var(--danger)'}"/><text x="${sx(p.x)+6}" y="${sy(p.y)-6}" fill="var(--text)" font-size="10">${fmt(p.y)}</text><text x="${sx(p.x)}" y="${H-18}" text-anchor="middle" fill="var(--muted)" font-size="10">${esc(p.name)}</text>`).join('')}<text x="18" y="24" fill="var(--muted)" font-size="12">Diagrama de masas: corte (+) / relleno (-)</text></svg>`}
-function plotCurveSketch(h){const W=900,H=320,cx=450,cy=280,R=220,a1=220,a2=320;const arc=`M ${cx+R*Math.cos(rad(a1))} ${cy+R*Math.sin(rad(a1))} A ${R} ${R} 0 0 1 ${cx+R*Math.cos(rad(a2))} ${cy+R*Math.sin(rad(a2))}`;return `<svg viewBox="0 0 ${W} ${H}"><path d="${arc}" fill="none" stroke="var(--primary)" stroke-width="5"/><line x1="120" y1="${cy-80}" x2="${cx}" y2="${cy}" stroke="var(--line)" stroke-width="2"/><line x1="${cx}" y1="${cy}" x2="780" y2="${cy-80}" stroke="var(--line)" stroke-width="2"/><circle cx="${cx}" cy="${cy}" r="5" fill="var(--danger)"/><text x="${cx+8}" y="${cy-8}" fill="var(--text)">PI ${fmt(h.PI)}</text><text x="150" y="80" fill="var(--text)">PC ${fmt(h.PC)}</text><text x="650" y="80" fill="var(--text)">PT ${fmt(h.PT)}</text><text x="18" y="24" fill="var(--muted)">Croquis de curva horizontal</text></svg>`}
-function plotVerticalCurve(rows){if(!rows.length)return '';const pts=rows.map(r=>({x:r.x,y:r.elev})),W=900,H=260,pad=40,xs=pts.map(p=>p.x),ys=pts.map(p=>p.y),minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);const sx=x=>pad+(x-minX)/(maxX-minX||1)*(W-2*pad),sy=y=>H-pad-(y-minY)/(maxY-minY||1)*(H-2*pad),pl=pts.map(p=>`${sx(p.x)},${sy(p.y)}`).join(' ');return `<svg viewBox="0 0 ${W} ${H}"><polyline points="${pl}" fill="none" stroke="var(--accent)" stroke-width="3"/>${pts.map(p=>`<circle cx="${sx(p.x)}" cy="${sy(p.y)}" r="4" fill="var(--accent)"/>`).join('')}<text x="18" y="24" fill="var(--muted)">Curva vertical parabólica</text></svg>`}
-function getExportRows(key){const d=current().modules[key];if(!d)return[];if(d.result?.rows)return d.result.rows;if(d.result?.points)return d.result.points;if(key==='curves')return d.result?.v?.table||calcCurves(false).v.table;if(Array.isArray(d.rows))return d.rows;if(d.result)return [d.result];return[]}
-function toCSV(rows){if(!rows.length)return'';const h=[...new Set(rows.flatMap(r=>Object.keys(r)))];return h.join(',')+'\n'+rows.map(r=>h.map(k=>`"${String(r[k]??'').replace(/"/g,'""')}"`).join(',')).join('\n')}
-function download(name,content,type='text/plain'){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([content],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
-function exportCSV(key){calcByKey(key,false);download(`${key}_${Date.now()}.csv`,toCSV(getExportRows(key)),'text/csv;charset=utf-8')}
-function exportJSON(key){download(`${key}_${Date.now()}.json`,JSON.stringify(current().modules[key],null,2),'application/json')}
-function exportXLS(key){const rows=getExportRows(key);if(!rows.length)return;const h=Object.keys(rows[0]);const html='<table><tr>'+h.map(x=>`<th>${esc(x)}</th>`).join('')+'</tr>'+rows.map(r=>'<tr>'+h.map(x=>`<td>${esc(r[x]??'')}</td>`).join('')+'</tr>').join('')+'</table>';download(`${key}_${Date.now()}.xls`,html,'application/vnd.ms-excel')}
-function parseCSV(text){const lines=String(text).split(/\r?\n/).filter(l=>l.trim());if(!lines.length)return[];const split=line=>{const out=[];let cur='',q=false;for(let ch of line){if(ch==='"'){q=!q;continue}if((ch===','||ch===';')&&!q){out.push(cur.trim());cur=''}else cur+=ch}out.push(cur.trim());return out};const heads=split(lines[0]);return lines.slice(1).map(line=>{const vals=split(line),o={};heads.forEach((h,i)=>o[h]=vals[i]??'');return o})}
-function importFile(key,file){if(!file)return;const reader=new FileReader();reader.onload=()=>{try{const txt=reader.result;let rows=file.name.toLowerCase().endsWith('.json')?JSON.parse(txt):parseCSV(txt);if(!Array.isArray(rows))rows=rows.rows||rows.data||[];if(current().modules[key]?.rows){current().modules[key].rows=rows;save();renderContent();status('Datos importados')}}catch(e){alert('No se pudo importar: '+e.message)}};reader.readAsText(file)}
-function blankFor(key){const d=current().modules[key];if(d?.rows?.[0]){const b=JSON.parse(JSON.stringify(d.rows[0]));Object.keys(b).forEach(k=>b[k]='');return b}return {point:'',x:'',y:'',z:''}}
-function addRow(key,index=null,dup=false){const rows=current().modules[key]?.rows;if(!rows)return;let b=dup&&index!==null?JSON.parse(JSON.stringify(rows[index])):blankFor(key);rows.splice(index===null?rows.length:index+1,0,b);save();renderContent()}
-function delRow(key,index){const rows=current().modules[key]?.rows;if(rows&&rows.length>1){rows.splice(index,1);save();renderContent()}else alert('Debe quedar al menos una fila')}
-function loadExamples(){const id=current().id,name=current().meta.name,meta=current().meta;const fresh=defaultProject(name);fresh.id=id;fresh.meta={...fresh.meta,...meta};state.projects[state.projects.findIndex(p=>p.id===id)]=fresh;save();render();status('Ejemplos precargados restaurados')}
-function updateInput(el){const p=current();if(el.dataset.bind){setByPath(p,el.dataset.bind,el.type==='number'?num(el.value):el.value);save();applyAppearance();renderProjectSelect();return}if(el.dataset.moduleField){setByPath(p.modules,el.dataset.moduleField,el.type==='number'?num(el.value):el.value);save();return}if(el.dataset.cell){setByPath(p.modules,el.dataset.cell,el.type==='number'?num(el.value):el.value);save();return}}
-document.addEventListener('click',e=>{const mod=e.target.closest('[data-module]');if(mod){state.active=mod.dataset.module;render();return}const btn=e.target.closest('[data-action]');if(!btn)return;const a=btn.dataset.action,target=btn.dataset.target,index=btn.dataset.index!==undefined?parseInt(btn.dataset.index):null;if(a==='toggleFormulas'){state.formulas=!state.formulas;localStorage.setItem('topopro_v3_formulas',state.formulas);renderContent()}if(a==='saveProject'){save()}if(a==='newProject'){const p=defaultProject('Nuevo proyecto');state.projects.push(p);state.activeId=p.id;save();render()}if(a==='duplicateProject'){const p=JSON.parse(JSON.stringify(current()));p.id=uid();p.meta.name+=' copia';state.projects.push(p);state.activeId=p.id;save();render()}if(a==='deleteProject'){if(state.projects.length===1)return alert('No se puede eliminar el único proyecto.');if(confirm('¿Eliminar este proyecto?')){state.projects=state.projects.filter(p=>p.id!==state.activeId);state.activeId=state.projects[0].id;save();render()}}if(a==='backupProject')download(`${current().meta.name}_respaldo.json`,JSON.stringify(current(),null,2),'application/json');if(a==='clearLogo'){current().meta.logo='';save();render()}if(a==='loadExamples')loadExamples();if(a==='calc')calcByKey(btn.dataset.calc,true);if(a==='addRow')addRow(target);if(a==='insertRow')addRow(target,index,false);if(a==='dupRow')addRow(target,index,true);if(a==='delRow')delRow(target,index);if(a==='exportCSV')exportCSV(target);if(a==='exportJSON')exportJSON(target);if(a==='exportXLS')exportXLS(target);if(a==='printReport')window.print();if(a==='showManual'){state.manualTab=target;state.active='manuals';render()}if(a==='manualTab'){state.manualTab=target;renderManuals()}});
-document.addEventListener('input',e=>{if(e.target.matches('[data-bind],[data-module-field],[data-cell]'))updateInput(e.target)});
-document.addEventListener('change',e=>{if(e.target.id==='projectSelect'){state.activeId=e.target.value;save();render();return}if(e.target.id==='themeToggle'){state.theme=e.target.checked?'dark':'light';localStorage.setItem('topopro_v3_theme',state.theme);render();return}if(e.target.id==='logoInput'){const f=e.target.files[0];if(f){const r=new FileReader();r.onload=()=>{current().meta.logo=r.result;save();render()};r.readAsDataURL(f)}return}if(e.target.dataset.import)importFile(e.target.dataset.import,e.target.files[0]);if(e.target.matches('[data-bind],[data-module-field],[data-cell]')){updateInput(e.target);renderContent()}});
-load();render();
+  const DB_NAME = 'topotaqui_pro_academico_v1';
+  const DB_VERSION = 1;
+  const STORE = 'projects';
+  const AUTOSAVE_MS = 650;
+
+  const modules = [
+    { id: 'dashboard', icon: '🏠', label: 'Panel principal' },
+    { id: 'datos', icon: '📋', label: 'Datos generales' },
+    { id: 'cinta', icon: '📏', label: 'Cinta' },
+    { id: 'brujula', icon: '🧭', label: 'Brújula y azimuts' },
+    { id: 'poligonal', icon: '🔷', label: 'Poligonal' },
+    { id: 'radiacion', icon: '📡', label: 'Radiación' },
+    { id: 'nivel_simple', icon: '📐', label: 'Nivelación simple' },
+    { id: 'nivel_compuesta', icon: '🏗️', label: 'Nivelación compuesta' },
+    { id: 'taquimetria', icon: '🎯', label: 'Taquimetría' },
+    { id: 'estacion_total', icon: '⚙️', label: 'Estación total' },
+    { id: 'perfil', icon: '📈', label: 'Perfil longitudinal' },
+    { id: 'secciones', icon: '↔️', label: 'Secciones' },
+    { id: 'replanteo', icon: '📍', label: 'Replanteo' },
+    { id: 'herramientas', icon: '🧰', label: 'Herramientas' },
+    { id: 'reportes', icon: '🖨️', label: 'Reportes' }
+  ];
+
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+  const uid = () => 'p_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8);
+  const deepClone = (obj) => {
+    try { return structuredClone(obj); }
+    catch (_) { return JSON.parse(JSON.stringify(obj)); }
+  };
+  const nowISO = () => new Date().toISOString();
+  const today = () => new Date().toISOString().slice(0, 10);
+
+  const state = {
+    db: null,
+    projects: [],
+    activeId: null,
+    module: 'dashboard',
+    saveTimer: null,
+    theme: localStorage.getItem('topotaqui-theme') || 'light',
+    deferredPrompt: null
+  };
+
+  function parseNum(value, fallback = 0) {
+    if (value === null || value === undefined || value === '') return fallback;
+    const n = Number(String(value).replace(/\s/g, '').replace(',', '.'));
+    return Number.isFinite(n) ? n : fallback;
+  }
+  function isNum(value) {
+    if (value === null || value === undefined || value === '') return false;
+    return Number.isFinite(Number(String(value).replace(/\s/g, '').replace(',', '.')));
+  }
+  function fmt(n, dec = 3) {
+    if (!Number.isFinite(n)) return '';
+    return Number(n).toLocaleString('es-PE', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+  }
+  function round(n, dec = 4) {
+    if (!Number.isFinite(n)) return 0;
+    const f = Math.pow(10, dec);
+    return Math.round(n * f) / f;
+  }
+  function degToRad(d) { return parseNum(d) * Math.PI / 180; }
+  function radToDeg(r) { return r * 180 / Math.PI; }
+  function normAz(az) {
+    let a = parseNum(az) % 360;
+    if (a < 0) a += 360;
+    return a;
+  }
+  function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[c]));
+  }
+  function download(filename, content, type = 'text/plain;charset=utf-8') {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  }
+
+  function openDB() {
+    return new Promise((resolve) => {
+      if (!('indexedDB' in window)) return resolve(null);
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    });
+  }
+  function tx(storeMode = 'readonly') {
+    if (!state.db) return null;
+    return state.db.transaction(STORE, storeMode).objectStore(STORE);
+  }
+  function dbGetAll() {
+    return new Promise((resolve) => {
+      const store = tx();
+      if (!store) {
+        const raw = localStorage.getItem('topotaqui-projects');
+        return resolve(raw ? JSON.parse(raw) : []);
+      }
+      const req = store.getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    });
+  }
+  function dbPut(project) {
+    project.updatedAt = nowISO();
+    return new Promise((resolve) => {
+      const store = tx('readwrite');
+      if (!store) {
+        const list = state.projects.filter(p => p.id !== project.id).concat(project);
+        localStorage.setItem('topotaqui-projects', JSON.stringify(list));
+        return resolve();
+      }
+      const req = store.put(JSON.parse(JSON.stringify(project)));
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+    });
+  }
+  function dbDelete(id) {
+    return new Promise((resolve) => {
+      const store = tx('readwrite');
+      if (!store) {
+        const list = state.projects.filter(p => p.id !== id);
+        localStorage.setItem('topotaqui-projects', JSON.stringify(list));
+        return resolve();
+      }
+      const req = store.delete(id);
+      req.onsuccess = () => resolve();
+      req.onerror = () => resolve();
+    });
+  }
+
+  function defaultProject() {
+    return {
+      id: uid(),
+      name: 'Proyecto topográfico ' + new Date().toLocaleDateString('es-PE'),
+      createdAt: nowISO(),
+      updatedAt: nowISO(),
+      general: {
+        tipoObra: 'Edificación', ubicacion: '', departamento: '', provincia: '', distrito: '', coordenadas: '', fecha: today(), hora: '',
+        responsable: '', operador: '', apuntador: '', croquista: '', auxiliares: '', equipo: '', equipoMarcaModelo: '', sistema: 'UTM', datum: 'WGS 84', zonaUTM: '', clima: '', observaciones: '', estado: 'Borrador'
+      },
+      settings: { mode: 'academico' },
+      modules: {
+        cinta: [
+          { puntoInicial: 'A', puntoFinal: 'B', distancia: 25.4, pendiente: 0, observacion: 'Lado de lote' },
+          { puntoInicial: 'B', puntoFinal: 'C', distancia: 18.2, pendiente: 0, observacion: 'Lado de lote' }
+        ],
+        brujula: [
+          { estacion: 'A', punto: 'B', rumboDeg: 35, cuadrante: 'NE', distancia: 25, declinacion: 0, observacion: 'Reconocimiento' }
+        ],
+        poligonal: { startE: 500000, startN: 8665000, closed: true, rows: [
+          { estacion: 'A', punto: 'B', rumboDeg: 35, cuadrante: 'NE', distancia: 25.4, observacion: 'Lote' },
+          { estacion: 'B', punto: 'C', rumboDeg: 55, cuadrante: 'SE', distancia: 18.2, observacion: 'Lote' },
+          { estacion: 'C', punto: 'D', rumboDeg: 35, cuadrante: 'SW', distancia: 25.3, observacion: 'Lote' },
+          { estacion: 'D', punto: 'A', rumboDeg: 55, cuadrante: 'NW', distancia: 18.1, observacion: 'Cierre' }
+        ]},
+        radiacion: { stationE: 500000, stationN: 8665000, rows: [
+          { punto: 'P1', azimut: 35, distancia: 12.5, codigo: 'BOR', descripcion: 'Borde de vía' }
+        ]},
+        nivel_simple: { cotaInicial: 100, rows: [
+          { punto: 'BM-01', atras: 1.245, intermedia: '', adelante: '', observacion: 'Banco de nivel' },
+          { punto: 'P1', atras: '', intermedia: 1.865, adelante: '', observacion: 'Terreno' },
+          { punto: 'PC-01', atras: '', intermedia: '', adelante: 2.015, observacion: 'Punto de cambio' }
+        ]},
+        nivel_compuesta: { cotaInicial: 100, rows: [
+          { estacion: 'N1', punto: 'BM-01', atras: 1.245, intermedia: '', adelante: '', observacion: 'Inicio' },
+          { estacion: 'N1', punto: 'P1', atras: '', intermedia: 1.865, adelante: '', observacion: 'Terreno' },
+          { estacion: 'N1', punto: 'PC-01', atras: '', intermedia: '', adelante: 2.015, observacion: 'Cambio' },
+          { estacion: 'N2', punto: 'PC-01', atras: 1.105, intermedia: '', adelante: '', observacion: 'Cambio' },
+          { estacion: 'N2', punto: 'P2', atras: '', intermedia: 1.445, adelante: '', observacion: 'Terreno' }
+        ]},
+        taquimetria: [
+          { estacion: 'E1', punto: 'P1', cotaEstacion: 100, alturaInstrumento: 1.5, hiloSuperior: 2.675, hiloMedio: 2.3, hiloInferior: 1.925, anguloVertical: 5, k: 100, c: 0, descripcion: 'Borde camino' }
+        ],
+        estacion_total: [
+          { punto: '1', este: 500000, norte: 8665000, cota: 100, codigo: 'BM', descripcion: 'Base' },
+          { punto: '2', este: 500025, norte: 8665017, cota: 100.45, codigo: 'BOR', descripcion: 'Borde' }
+        ],
+        perfil: [
+          { progresiva: '0+000', distanciaParcial: 0, cotaTerreno: 100.00, cotaRasante: 100.10, cotaTuberia: 99.40, observacion: 'Inicio' },
+          { progresiva: '0+020', distanciaParcial: 20, cotaTerreno: 100.32, cotaRasante: 100.30, cotaTuberia: 99.55, observacion: 'Eje' },
+          { progresiva: '0+040', distanciaParcial: 20, cotaTerreno: 100.80, cotaRasante: 100.50, cotaTuberia: 99.70, observacion: 'Corte' }
+        ],
+        secciones: [
+          { progresiva: '0+020', lado: 'Izq.', offset: -5, cotaTerreno: 100.40, cotaProyecto: 100.20, observacion: 'Sección vía' },
+          { progresiva: '0+020', lado: 'Eje', offset: 0, cotaTerreno: 100.32, cotaProyecto: 100.30, observacion: 'Eje' },
+          { progresiva: '0+020', lado: 'Der.', offset: 5, cotaTerreno: 100.25, cotaProyecto: 100.20, observacion: 'Sección vía' }
+        ],
+        replanteo: [
+          { punto: 'C1', esteDiseno: 500010, norteDiseno: 8665010, cotaDiseno: 100.5, esteCampo: 500010.012, norteCampo: 8665009.991, cotaCampo: 100.505, observacion: 'Eje columna' }
+        ]
+      }
+    };
+  }
+  function activeProject() { return state.projects.find(p => p.id === state.activeId) || null; }
+  function ensureProject() {
+    let p = activeProject();
+    if (!p) {
+      p = defaultProject(); state.projects.push(p); state.activeId = p.id;
+    }
+    return p;
+  }
+  function scheduleSave() {
+    const p = activeProject();
+    if (!p) return;
+    $('#saveStatus').textContent = 'Guardando…';
+    clearTimeout(state.saveTimer);
+    state.saveTimer = setTimeout(async () => {
+      await dbPut(p);
+      await loadProjects(false);
+      $('#saveStatus').textContent = 'Guardado ' + new Date().toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' });
+      renderProjectSelect();
+    }, AUTOSAVE_MS);
+  }
+
+  function header(title, subtitle) {
+    return `<div class="module-header"><div><h2>${escapeHtml(title)}</h2><p>${escapeHtml(subtitle || '')}</p></div></div>`;
+  }
+  function moduleCard(title, subtitle, html) {
+    return `<section class="card">${header(title, subtitle)}${html || ''}</section>`;
+  }
+
+  function renderNav() {
+    const nav = $('#moduleNav');
+    nav.innerHTML = modules.map(m => `<button class="nav-btn ${state.module === m.id ? 'active' : ''}" data-module="${m.id}" type="button"><span>${m.icon}</span>${m.label}</button>`).join('');
+    if (nav.dataset.bound !== '1') {
+      nav.dataset.bound = '1';
+      nav.addEventListener('click', e => {
+        const btn = e.target.closest('[data-module]');
+        if (!btn) return;
+        state.module = btn.dataset.module;
+        $('#sidebar').classList.remove('open');
+        render();
+      });
+    }
+  }
+  function renderProjectSelect() {
+    const select = $('#projectSelect');
+    select.innerHTML = state.projects.map(p => `<option value="${p.id}" ${p.id === state.activeId ? 'selected' : ''}>${escapeHtml(p.name)}</option>`).join('');
+    const p = activeProject();
+    $('#activeProjectName').textContent = p ? p.name : 'Sin proyecto activo';
+  }
+  async function loadProjects(selectFirst = true) {
+    const all = await dbGetAll();
+    state.projects = all.sort((a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)));
+    if (selectFirst && state.projects.length && !state.activeId) state.activeId = state.projects[0].id;
+  }
+
+  function bindGeneralInputs(root, object, prefix = '') {
+    $$('[data-field]', root).forEach(el => {
+      const key = el.dataset.field;
+      const path = prefix ? prefix + '.' + key : key;
+      const value = path.split('.').reduce((o, k) => o?.[k], object);
+      if (el.type === 'checkbox') el.checked = Boolean(value); else el.value = value ?? '';
+      el.addEventListener('input', () => {
+        setByPath(object, path, el.type === 'checkbox' ? el.checked : el.value);
+        scheduleSave();
+        if (key === 'name') renderProjectSelect();
+      });
+      el.addEventListener('change', () => {
+        setByPath(object, path, el.type === 'checkbox' ? el.checked : el.value);
+        scheduleSave();
+        renderProjectSelect();
+      });
+    });
+  }
+  function setByPath(obj, path, value) {
+    const parts = path.split('.');
+    let ref = obj;
+    while (parts.length > 1) {
+      const p = parts.shift();
+      if (!ref[p]) ref[p] = {};
+      ref = ref[p];
+    }
+    ref[parts[0]] = value;
+  }
+
+  function field(label, name, value = '', type = 'text', extra = '') {
+    return `<div class="field"><label>${escapeHtml(label)}</label><input data-field="${escapeHtml(name)}" value="${escapeHtml(value)}" type="${type}" ${extra}></div>`;
+  }
+  function textarea(label, name, value = '') {
+    return `<div class="field"><label>${escapeHtml(label)}</label><textarea data-field="${escapeHtml(name)}">${escapeHtml(value)}</textarea></div>`;
+  }
+  function selectField(label, name, value, options) {
+    return `<div class="field"><label>${escapeHtml(label)}</label><select data-field="${escapeHtml(name)}">${options.map(o => `<option value="${escapeHtml(o)}" ${o === value ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}</select></div>`;
+  }
+
+  function renderEditableTable({ rows, columns, moduleKey, title, subtitle, compute, extrasHtml = '', afterHtml = '', minWidth = 900 }) {
+    const computed = compute ? compute(rows) : { rows };
+    const cRows = computed.rows || rows;
+    const tableId = 'tbl_' + moduleKey;
+    return `
+      ${extrasHtml}
+      <div class="toolbar">
+        <button class="btn primary small" data-action="add-row" data-module-key="${moduleKey}" type="button">+ Agregar fila</button>
+        <button class="btn small" data-action="export-csv" data-module-key="${moduleKey}" type="button">Exportar CSV</button>
+        <button class="btn small" data-action="export-xls" data-module-key="${moduleKey}" type="button">Exportar Excel</button>
+        <button class="btn small" data-action="import-csv" data-module-key="${moduleKey}" type="button">Importar CSV/TXT</button>
+        <button class="btn small" data-action="print-module" type="button">Imprimir / PDF</button>
+      </div>
+      <div class="table-wrap"><table id="${tableId}" style="min-width:${minWidth}px">
+        <thead><tr>${columns.map(c => `<th>${escapeHtml(c.label)}</th>`).join('')}<th class="no-print">Acciones</th></tr></thead>
+        <tbody>
+        ${cRows.map((r, i) => `<tr>${columns.map(c => renderCell(c, r, i, moduleKey)).join('')}<td class="row-actions no-print">
+          <button class="btn small" data-action="insert-above" data-module-key="${moduleKey}" data-index="${i}" title="Insertar arriba">↑</button>
+          <button class="btn small" data-action="insert-below" data-module-key="${moduleKey}" data-index="${i}" title="Insertar abajo">↓</button>
+          <button class="btn small" data-action="duplicate-row" data-module-key="${moduleKey}" data-index="${i}" title="Duplicar">⧉</button>
+          <button class="btn small danger" data-action="delete-row" data-module-key="${moduleKey}" data-index="${i}" title="Eliminar">🗑</button>
+        </td></tr>`).join('')}
+        </tbody>
+      </table></div>
+      ${computed.summary ? `<div class="calc-box">${computed.summary}</div>` : ''}
+      ${renderModuleChart(moduleKey, cRows, computed)}
+      ${afterHtml}`;
+  }
+  function renderCell(c, row, i, moduleKey) {
+    const val = row[c.key] ?? '';
+    if (c.readonly) return `<td class="readonly">${escapeHtml(c.format ? c.format(val, row, i) : val)}</td>`;
+    if (c.type === 'select') {
+      return `<td><select data-table-input data-module-key="${moduleKey}" data-index="${i}" data-key="${c.key}">${c.options.map(o => `<option value="${escapeHtml(o)}" ${String(o) === String(val) ? 'selected' : ''}>${escapeHtml(o)}</option>`).join('')}</select></td>`;
+    }
+    return `<td><input data-table-input data-module-key="${moduleKey}" data-index="${i}" data-key="${c.key}" type="${c.type || 'text'}" value="${escapeHtml(val)}" ${c.step ? `step="${c.step}"` : ''}></td>`;
+  }
+
+  const moduleRows = (p, key) => {
+    const val = p.modules[key];
+    if (Array.isArray(val)) return val;
+    if (val && Array.isArray(val.rows)) return val.rows;
+    return [];
+  };
+  function mutateRows(moduleKey, fn) {
+    const p = ensureProject();
+    const container = p.modules[moduleKey];
+    let rows = Array.isArray(container) ? container : container.rows;
+    fn(rows, container);
+    scheduleSave();
+    render();
+  }
+  function emptyRow(columns) {
+    const row = {};
+    columns.forEach(c => { if (!c.readonly) row[c.key] = c.default ?? ''; });
+    return row;
+  }
+  function columnsFor(moduleKey) { return tableConfigs[moduleKey]?.columns || []; }
+
+  const tableConfigs = {};
+
+  function attachTableHandlers(root) {
+    if (root.dataset.tableHandlersBound === '1') return;
+    root.dataset.tableHandlersBound = '1';
+    root.addEventListener('change', e => {
+      const inp = e.target.closest('[data-table-input]');
+      if (!inp) return;
+      const p = ensureProject();
+      const key = inp.dataset.moduleKey;
+      const rows = moduleRows(p, key);
+      const index = Number(inp.dataset.index);
+      const field = inp.dataset.key;
+      if (rows[index]) rows[index][field] = inp.value;
+      scheduleSave();
+      render();
+    });
+    root.addEventListener('click', e => {
+      const btn = e.target.closest('[data-action]');
+      if (!btn) return;
+      const action = btn.dataset.action;
+      const key = btn.dataset.moduleKey;
+      const index = Number(btn.dataset.index);
+      if (['add-row', 'insert-above', 'insert-below', 'duplicate-row', 'delete-row'].includes(action)) {
+        const cols = columnsFor(key);
+        mutateRows(key, (rows) => {
+          if (action === 'add-row') rows.push(emptyRow(cols));
+          if (action === 'insert-above') rows.splice(index, 0, emptyRow(cols));
+          if (action === 'insert-below') rows.splice(index + 1, 0, emptyRow(cols));
+          if (action === 'duplicate-row') rows.splice(index + 1, 0, deepClone(rows[index] || emptyRow(cols)));
+          if (action === 'delete-row' && confirm('¿Eliminar esta fila?')) rows.splice(index, 1);
+        });
+      }
+      if (action === 'export-csv') exportModuleCSV(key);
+      if (action === 'export-xls') exportModuleXLS(key);
+      if (action === 'import-csv') importModuleCSV(key);
+      if (action === 'print-module') printCurrentModule();
+    });
+  }
+
+  function rowsToCSV(rows, columns) {
+    const cols = columns.filter(c => !c.noExport);
+    const head = cols.map(c => c.label).join(';');
+    const body = rows.map(r => cols.map(c => csvCell(r[c.key] ?? '')).join(';')).join('\n');
+    return head + '\n' + body;
+  }
+  function csvCell(v) { return '"' + String(v ?? '').replace(/"/g, '""') + '"'; }
+  function exportModuleCSV(key) {
+    const p = ensureProject();
+    const rows = computeForExport(key);
+    const cols = exportColumnsFor(key);
+    download(`${safeName(p.name)}_${key}.csv`, rowsToCSV(rows, cols), 'text/csv;charset=utf-8');
+  }
+  function exportModuleXLS(key) {
+    const p = ensureProject();
+    const rows = computeForExport(key);
+    const cols = exportColumnsFor(key);
+    const html = `<html><head><meta charset="utf-8"></head><body><table><tr>${cols.map(c => `<th>${escapeHtml(c.label)}</th>`).join('')}</tr>${rows.map(r => `<tr>${cols.map(c => `<td>${escapeHtml(r[c.key] ?? '')}</td>`).join('')}</tr>`).join('')}</table></body></html>`;
+    download(`${safeName(p.name)}_${key}.xls`, html, 'application/vnd.ms-excel;charset=utf-8');
+  }
+  function safeName(s) { return String(s || 'proyecto').replace(/[^\w\-áéíóúñ]+/gi, '_').slice(0, 60); }
+  function parseDelimited(text) {
+    const lines = text.trim().split(/\r?\n/).filter(Boolean);
+    const sample = lines[0] || '';
+    const delimiters = [';', ',', '\t'];
+    let delim = delimiters.sort((a, b) => sample.split(b).length - sample.split(a).length)[0];
+    if (sample.split(delim).length < 2) delim = /\s+/;
+    return lines.map(line => String(line).split(delim).map(v => v.trim().replace(/^"|"$/g, '')));
+  }
+  function importModuleCSV(key) {
+    const input = $('#fileInput');
+    input.accept = '.csv,.txt';
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return;
+      const text = await file.text();
+      const data = parseDelimited(text);
+      const cols = columnsFor(key).filter(c => !c.readonly);
+      const first = data[0] || [];
+      const hasHeader = first.some(v => cols.some(c => normalize(v).includes(normalize(c.key)) || normalize(v).includes(normalize(c.label))));
+      const rowsRaw = hasHeader ? data.slice(1) : data;
+      mutateRows(key, (rows) => {
+        rows.length = 0;
+        rowsRaw.forEach(arr => {
+          const obj = emptyRow(cols);
+          cols.forEach((c, i) => { obj[c.key] = arr[i] ?? ''; });
+          rows.push(obj);
+        });
+      });
+      input.value = '';
+    };
+    input.click();
+  }
+  function normalize(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, ''); }
+
+  function calcCinta(rows) {
+    let sum = 0;
+    const out = rows.map(r => {
+      const d = parseNum(r.distancia);
+      const p = parseNum(r.pendiente);
+      const dh = d / Math.sqrt(1 + Math.pow(p / 100, 2));
+      sum += dh;
+      return { ...r, distanciaHorizontal: round(dh, 4) };
+    });
+    return { rows: out, summary: `<strong>Perímetro/sumatoria horizontal:</strong> ${fmt(sum)} m. <span class="formula">DH = D / √(1 + (p/100)²)</span>` };
+  }
+  tableConfigs.cinta = { columns: [
+    { key: 'puntoInicial', label: 'Punto inicial' }, { key: 'puntoFinal', label: 'Punto final' }, { key: 'distancia', label: 'Distancia medida (m)', type: 'number', step: '0.001' }, { key: 'pendiente', label: 'Pendiente %', type: 'number', step: '0.001', default: 0 }, { key: 'distanciaHorizontal', label: 'Dist. horizontal (m)', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'observacion', label: 'Observación' }
+  ], compute: calcCinta };
+
+  function rumboToAz(rumboDeg, cuadrante) {
+    const a = parseNum(rumboDeg);
+    if (cuadrante === 'NE') return normAz(a);
+    if (cuadrante === 'SE') return normAz(180 - a);
+    if (cuadrante === 'SW') return normAz(180 + a);
+    if (cuadrante === 'NW') return normAz(360 - a);
+    return normAz(a);
+  }
+  function azToRumbo(az) {
+    const a = normAz(az);
+    if (a >= 0 && a <= 90) return { q: 'NE', deg: a };
+    if (a > 90 && a <= 180) return { q: 'SE', deg: 180 - a };
+    if (a > 180 && a <= 270) return { q: 'SW', deg: a - 180 };
+    return { q: 'NW', deg: 360 - a };
+  }
+  function calcBrujula(rows) {
+    const out = rows.map(r => {
+      const az = rumboToAz(r.rumboDeg, r.cuadrante);
+      const azc = normAz(az + parseNum(r.declinacion));
+      const d = parseNum(r.distancia);
+      return { ...r, azimut: round(az, 6), azimutCorregido: round(azc, 6), deltaE: round(d * Math.sin(degToRad(azc)), 4), deltaN: round(d * Math.cos(degToRad(azc)), 4) };
+    });
+    return { rows: out, summary: `<strong>Convención usada:</strong> declinación Este positiva. <span class="formula">Az verdadero = Az magnético + declinación</span>. Revise interferencias por atracción local.` };
+  }
+  tableConfigs.brujula = { columns: [
+    { key: 'estacion', label: 'Estación' }, { key: 'punto', label: 'Punto visado' }, { key: 'rumboDeg', label: 'Rumbo (°)', type: 'number', step: '0.0001' }, { key: 'cuadrante', label: 'Cuadrante', type: 'select', options: ['NE', 'SE', 'SW', 'NW'], default: 'NE' }, { key: 'distancia', label: 'Distancia (m)', type: 'number', step: '0.001' }, { key: 'declinacion', label: 'Declinación (°)', type: 'number', step: '0.0001', default: 0 }, { key: 'azimut', label: 'Azimut (°)', readonly: true, format: v => fmt(parseNum(v), 4) }, { key: 'azimutCorregido', label: 'Az. corregido (°)', readonly: true, format: v => fmt(parseNum(v), 4) }, { key: 'deltaE', label: 'ΔE (m)', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'deltaN', label: 'ΔN (m)', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'observacion', label: 'Observación' }
+  ], compute: calcBrujula };
+
+  function calcPoligonalStruct(poly) {
+    let e = parseNum(poly.startE), n = parseNum(poly.startN);
+    let sumE = 0, sumN = 0, total = 0;
+    const out = (poly.rows || []).map(r => {
+      const az = rumboToAz(r.rumboDeg, r.cuadrante);
+      const d = parseNum(r.distancia);
+      const de = d * Math.sin(degToRad(az));
+      const dn = d * Math.cos(degToRad(az));
+      sumE += de; sumN += dn; total += d;
+      e += de; n += dn;
+      return { ...r, azimut: round(az, 6), deltaE: round(de, 4), deltaN: round(dn, 4), esteCalc: round(e, 4), norteCalc: round(n, 4) };
+    });
+    const elc = Math.sqrt(sumE * sumE + sumN * sumN);
+    const precision = elc > 0 ? total / elc : Infinity;
+    return { rows: out, sumE, sumN, total, elc, precision };
+  }
+  tableConfigs.poligonal = { columns: [
+    { key: 'estacion', label: 'Estación' }, { key: 'punto', label: 'Punto adelante' }, { key: 'rumboDeg', label: 'Rumbo (°)', type: 'number', step: '0.0001' }, { key: 'cuadrante', label: 'Cuadrante', type: 'select', options: ['NE', 'SE', 'SW', 'NW'], default: 'NE' }, { key: 'distancia', label: 'Distancia (m)', type: 'number', step: '0.001' }, { key: 'azimut', label: 'Azimut (°)', readonly: true, format: v => fmt(parseNum(v), 4) }, { key: 'deltaE', label: 'ΔE', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'deltaN', label: 'ΔN', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'esteCalc', label: 'Este calc.', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'norteCalc', label: 'Norte calc.', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'observacion', label: 'Observación' }
+  ] };
+
+  function calcRadiacionStruct(rad) {
+    const se = parseNum(rad.stationE), sn = parseNum(rad.stationN);
+    const out = (rad.rows || []).map(r => {
+      const az = normAz(r.azimut);
+      const d = parseNum(r.distancia);
+      const de = d * Math.sin(degToRad(az));
+      const dn = d * Math.cos(degToRad(az));
+      return { ...r, deltaE: round(de, 4), deltaN: round(dn, 4), este: round(se + de, 4), norte: round(sn + dn, 4) };
+    });
+    return { rows: out };
+  }
+  tableConfigs.radiacion = { columns: [
+    { key: 'punto', label: 'Punto' }, { key: 'azimut', label: 'Azimut (°)', type: 'number', step: '0.0001' }, { key: 'distancia', label: 'Distancia (m)', type: 'number', step: '0.001' }, { key: 'deltaE', label: 'ΔE', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'deltaN', label: 'ΔN', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'este', label: 'Este', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'norte', label: 'Norte', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'codigo', label: 'Código' }, { key: 'descripcion', label: 'Descripción' }
+  ] };
+
+  function calcNivelSimpleStruct(mod) {
+    const cotaInicial = parseNum(mod.cotaInicial);
+    let ai = null;
+    const out = (mod.rows || []).map((r, i) => {
+      if (i === 0 || ai === null) ai = cotaInicial + parseNum(r.atras);
+      const lectura = isNum(r.intermedia) ? parseNum(r.intermedia) : isNum(r.adelante) ? parseNum(r.adelante) : isNum(r.atras) ? parseNum(r.atras) : 0;
+      const cota = ai - lectura;
+      return { ...r, ai: round(ai, 4), cota: round(cota, 4) };
+    });
+    return { rows: out, ai };
+  }
+  tableConfigs.nivel_simple = { columns: [
+    { key: 'punto', label: 'Punto' }, { key: 'atras', label: 'Lect. atrás', type: 'number', step: '0.001' }, { key: 'intermedia', label: 'Lect. intermedia', type: 'number', step: '0.001' }, { key: 'adelante', label: 'Lect. adelante', type: 'number', step: '0.001' }, { key: 'ai', label: 'AI', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'cota', label: 'Cota', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'observacion', label: 'Observación' }
+  ] };
+
+  function calcNivelCompuestaStruct(mod) {
+    let currentCota = parseNum(mod.cotaInicial);
+    let ai = null, lastFinal = currentCota;
+    const out = (mod.rows || []).map((r) => {
+      if (isNum(r.atras)) ai = currentCota + parseNum(r.atras);
+      let cota = '';
+      if (ai !== null) {
+        if (isNum(r.intermedia)) cota = ai - parseNum(r.intermedia);
+        if (isNum(r.adelante)) { cota = ai - parseNum(r.adelante); currentCota = cota; lastFinal = cota; }
+        if (isNum(r.atras) && !isNum(r.intermedia) && !isNum(r.adelante)) cota = currentCota;
+      }
+      return { ...r, ai: ai === null ? '' : round(ai, 4), cota: cota === '' ? '' : round(cota, 4) };
+    });
+    return { rows: out, cierre: lastFinal - parseNum(mod.cotaInicial) };
+  }
+  tableConfigs.nivel_compuesta = { columns: [
+    { key: 'estacion', label: 'Estación' }, { key: 'punto', label: 'Punto' }, { key: 'atras', label: 'Lect. atrás', type: 'number', step: '0.001' }, { key: 'intermedia', label: 'Lect. intermedia', type: 'number', step: '0.001' }, { key: 'adelante', label: 'Lect. adelante', type: 'number', step: '0.001' }, { key: 'ai', label: 'AI', readonly: true, format: v => v === '' ? '' : fmt(parseNum(v)) }, { key: 'cota', label: 'Cota', readonly: true, format: v => v === '' ? '' : fmt(parseNum(v)) }, { key: 'observacion', label: 'Observación' }
+  ] };
+
+  function calcTaquimetria(rows) {
+    const out = rows.map(r => {
+      const hs = parseNum(r.hiloSuperior), hm = parseNum(r.hiloMedio), hi = parseNum(r.hiloInferior), k = parseNum(r.k, 100), c = parseNum(r.c), theta = degToRad(r.anguloVertical);
+      const s = hs - hi;
+      const dh = k * s * Math.pow(Math.cos(theta), 2) + c * Math.cos(theta);
+      const v = (k * s / 2) * Math.sin(2 * theta) + c * Math.sin(theta);
+      const cota = parseNum(r.cotaEstacion) + parseNum(r.alturaInstrumento) + v - hm;
+      return { ...r, intervalo: round(s, 4), distanciaHorizontal: round(dh, 4), desnivel: round(v, 4), cotaPunto: round(cota, 4) };
+    });
+    return { rows: out, summary: `<span class="formula">s = HS - HI</span> · <span class="formula">DH = K·s·cos²θ + C·cosθ</span> · <span class="formula">CotaP = CotaE + HI + V - HM</span>` };
+  }
+  tableConfigs.taquimetria = { columns: [
+    { key: 'estacion', label: 'Estación' }, { key: 'punto', label: 'Punto' }, { key: 'cotaEstacion', label: 'Cota estación', type: 'number', step: '0.001' }, { key: 'alturaInstrumento', label: 'Alt. instrumento', type: 'number', step: '0.001' }, { key: 'hiloSuperior', label: 'Hilo superior', type: 'number', step: '0.001' }, { key: 'hiloMedio', label: 'Hilo medio', type: 'number', step: '0.001' }, { key: 'hiloInferior', label: 'Hilo inferior', type: 'number', step: '0.001' }, { key: 'anguloVertical', label: 'Ángulo vertical (°)', type: 'number', step: '0.0001' }, { key: 'k', label: 'K', type: 'number', step: '0.001', default: 100 }, { key: 'c', label: 'C', type: 'number', step: '0.001', default: 0 }, { key: 'intervalo', label: 's', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'distanciaHorizontal', label: 'DH', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'desnivel', label: 'V', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'cotaPunto', label: 'Cota punto', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'descripcion', label: 'Descripción' }
+  ], compute: calcTaquimetria, minWidth: 1300 };
+
+  function calcEstacion(rows) {
+    let prev = null;
+    const out = rows.map(r => {
+      let dist = '', az = '', pend = '';
+      if (prev) {
+        const de = parseNum(r.este) - parseNum(prev.este), dn = parseNum(r.norte) - parseNum(prev.norte), dz = parseNum(r.cota) - parseNum(prev.cota);
+        dist = Math.sqrt(de * de + dn * dn);
+        az = normAz(radToDeg(Math.atan2(de, dn)));
+        pend = dist ? dz / dist * 100 : 0;
+      }
+      prev = r;
+      return { ...r, distanciaPrev: dist === '' ? '' : round(dist, 4), azimutPrev: az === '' ? '' : round(az, 6), pendientePrev: pend === '' ? '' : round(pend, 4) };
+    });
+    return { rows: out, summary: `<strong>Importación:</strong> admite CSV/TXT. Orden recomendado: punto, Este, Norte, Cota, código, descripción. También puede editarse manualmente.` };
+  }
+  tableConfigs.estacion_total = { columns: [
+    { key: 'punto', label: 'Punto' }, { key: 'este', label: 'Este', type: 'number', step: '0.001' }, { key: 'norte', label: 'Norte', type: 'number', step: '0.001' }, { key: 'cota', label: 'Cota', type: 'number', step: '0.001' }, { key: 'codigo', label: 'Código' }, { key: 'descripcion', label: 'Descripción' }, { key: 'distanciaPrev', label: 'Dist. a anterior', readonly: true, format: v => v === '' ? '' : fmt(parseNum(v)) }, { key: 'azimutPrev', label: 'Az. a anterior', readonly: true, format: v => v === '' ? '' : fmt(parseNum(v), 4) }, { key: 'pendientePrev', label: 'Pendiente %', readonly: true, format: v => v === '' ? '' : fmt(parseNum(v), 3) }
+  ], compute: calcEstacion };
+
+  function calcPerfil(rows) {
+    let acc = 0;
+    let prevCota = null;
+    const out = rows.map((r, i) => {
+      acc += parseNum(r.distanciaParcial);
+      const dif = parseNum(r.cotaTerreno) - parseNum(r.cotaRasante);
+      const pend = i && parseNum(r.distanciaParcial) ? (parseNum(r.cotaTerreno) - prevCota) / parseNum(r.distanciaParcial) * 100 : 0;
+      prevCota = parseNum(r.cotaTerreno);
+      return { ...r, distanciaAcumulada: round(acc, 4), diferencia: round(dif, 4), pendiente: round(pend, 4), estado: dif > 0 ? 'Corte' : dif < 0 ? 'Relleno' : 'A nivel' };
+    });
+    return { rows: out };
+  }
+  tableConfigs.perfil = { columns: [
+    { key: 'progresiva', label: 'Progresiva' }, { key: 'distanciaParcial', label: 'Dist. parcial', type: 'number', step: '0.001' }, { key: 'distanciaAcumulada', label: 'Dist. acum.', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'cotaTerreno', label: 'Cota terreno', type: 'number', step: '0.001' }, { key: 'cotaRasante', label: 'Cota rasante', type: 'number', step: '0.001' }, { key: 'cotaTuberia', label: 'Cota tubería', type: 'number', step: '0.001' }, { key: 'diferencia', label: 'Cota roja', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'pendiente', label: 'Pendiente %', readonly: true, format: v => fmt(parseNum(v), 3) }, { key: 'estado', label: 'Estado', readonly: true }, { key: 'observacion', label: 'Observación' }
+  ], compute: calcPerfil };
+
+  function calcSecciones(rows) {
+    const out = rows.map(r => {
+      const dif = parseNum(r.cotaTerreno) - parseNum(r.cotaProyecto);
+      return { ...r, diferencia: round(dif, 4), estado: dif > 0 ? 'Corte' : dif < 0 ? 'Relleno' : 'A nivel' };
+    });
+    return { rows: out };
+  }
+  tableConfigs.secciones = { columns: [
+    { key: 'progresiva', label: 'Progresiva' }, { key: 'lado', label: 'Lado' }, { key: 'offset', label: 'Offset (m)', type: 'number', step: '0.001' }, { key: 'cotaTerreno', label: 'Cota terreno', type: 'number', step: '0.001' }, { key: 'cotaProyecto', label: 'Cota proyecto', type: 'number', step: '0.001' }, { key: 'diferencia', label: 'Dif.', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'estado', label: 'Estado', readonly: true }, { key: 'observacion', label: 'Observación' }
+  ], compute: calcSecciones };
+
+  function calcReplanteo(rows) {
+    const out = rows.map(r => {
+      const de = parseNum(r.esteCampo) - parseNum(r.esteDiseno), dn = parseNum(r.norteCampo) - parseNum(r.norteDiseno), dz = parseNum(r.cotaCampo) - parseNum(r.cotaDiseno);
+      return { ...r, deltaE: round(de, 4), deltaN: round(dn, 4), deltaZ: round(dz, 4), distanciaError: round(Math.sqrt(de * de + dn * dn), 4), estado: 'Verificar tolerancia del expediente' };
+    });
+    return { rows: out, summary: `<strong>Advertencia:</strong> las tolerancias de replanteo deben tomarse del expediente técnico, norma aplicable o entidad contratante.` };
+  }
+  tableConfigs.replanteo = { columns: [
+    { key: 'punto', label: 'Punto' }, { key: 'esteDiseno', label: 'Este diseño', type: 'number', step: '0.001' }, { key: 'norteDiseno', label: 'Norte diseño', type: 'number', step: '0.001' }, { key: 'cotaDiseno', label: 'Cota diseño', type: 'number', step: '0.001' }, { key: 'esteCampo', label: 'Este campo', type: 'number', step: '0.001' }, { key: 'norteCampo', label: 'Norte campo', type: 'number', step: '0.001' }, { key: 'cotaCampo', label: 'Cota campo', type: 'number', step: '0.001' }, { key: 'deltaE', label: 'ΔE', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'deltaN', label: 'ΔN', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'deltaZ', label: 'ΔZ', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'distanciaError', label: 'Error H', readonly: true, format: v => fmt(parseNum(v)) }, { key: 'estado', label: 'Estado', readonly: true }, { key: 'observacion', label: 'Observación' }
+  ], compute: calcReplanteo, minWidth: 1200 };
+
+  function computeForExport(key) {
+    const p = ensureProject();
+    if (key === 'poligonal') return calcPoligonalStruct(p.modules.poligonal).rows;
+    if (key === 'radiacion') return calcRadiacionStruct(p.modules.radiacion).rows;
+    if (key === 'nivel_simple') return calcNivelSimpleStruct(p.modules.nivel_simple).rows;
+    if (key === 'nivel_compuesta') return calcNivelCompuestaStruct(p.modules.nivel_compuesta).rows;
+    const cfg = tableConfigs[key];
+    const rows = moduleRows(p, key);
+    return cfg?.compute ? cfg.compute(rows).rows : rows;
+  }
+  function exportColumnsFor(key) { return tableConfigs[key]?.columns || []; }
+
+  function render() {
+    document.documentElement.dataset.theme = state.theme;
+    const p = ensureProject();
+    renderNav();
+    renderProjectSelect();
+    $('#content').innerHTML = renderModule(p, state.module);
+    attachDynamicHandlers($('#content'));
+  }
+  function renderModule(p, id) {
+    switch (id) {
+      case 'dashboard': return renderDashboard(p);
+      case 'datos': return renderDatos(p);
+      case 'cinta': return renderTableModule('cinta', 'Levantamiento con cinta', 'Registra distancias, pendientes y distancias horizontales.', tableConfigs.cinta.compute);
+      case 'brujula': return renderTableModule('brujula', 'Brújula, rumbos y azimuts', 'Convierte rumbos, aplica declinación y calcula proyecciones básicas.', tableConfigs.brujula.compute);
+      case 'poligonal': return renderPoligonal(p);
+      case 'radiacion': return renderRadiacion(p);
+      case 'nivel_simple': return renderNivelSimple(p);
+      case 'nivel_compuesta': return renderNivelCompuesta(p);
+      case 'taquimetria': return renderTableModule('taquimetria', 'Taquimetría', 'Calcula intervalo estadimétrico, distancia horizontal, desnivel y cota del punto.', tableConfigs.taquimetria.compute);
+      case 'estacion_total': return renderTableModule('estacion_total', 'Estación total', 'Ingreso manual o importación CSV/TXT de puntos con coordenadas.', tableConfigs.estacion_total.compute);
+      case 'perfil': return renderPerfil(p);
+      case 'secciones': return renderTableModule('secciones', 'Secciones transversales', 'Compara terreno y proyecto por progresiva y offset.', tableConfigs.secciones.compute);
+      case 'replanteo': return renderTableModule('replanteo', 'Replanteo', 'Compara puntos de diseño y puntos replanteados en campo.', tableConfigs.replanteo.compute);
+      case 'herramientas': return renderHerramientas(p);
+      case 'reportes': return renderReportes(p);
+      default: return renderDashboard(p);
+    }
+  }
+  function renderDashboard(p) {
+    const modCounts = Object.entries(p.modules).map(([k, v]) => [k, Array.isArray(v) ? v.length : Array.isArray(v.rows) ? v.rows.length : 0]);
+    return moduleCard('Panel principal', 'Administra proyectos, respaldos e ingreso a módulos técnicos.', `
+      <div class="kpi-grid">
+        <div class="kpi"><span>Proyecto activo</span><strong>${escapeHtml(p.name)}</strong></div>
+        <div class="kpi"><span>Tipo de obra</span><strong>${escapeHtml(p.general.tipoObra || 'No definido')}</strong></div>
+        <div class="kpi"><span>Última modificación</span><strong>${new Date(p.updatedAt).toLocaleDateString('es-PE')}</strong></div>
+        <div class="kpi"><span>Módulos con datos</span><strong>${modCounts.filter(([, c]) => c > 0).length}</strong></div>
+      </div>
+      <div class="toolbar">
+        <button class="btn primary" data-main-action="new-project" type="button">+ Nuevo proyecto</button>
+        <button class="btn" data-main-action="duplicate-project" type="button">Duplicar proyecto</button>
+        <button class="btn" data-main-action="export-project" type="button">Exportar JSON</button>
+        <button class="btn" data-main-action="import-project" type="button">Importar JSON</button>
+        <button class="btn danger" data-main-action="delete-project" type="button">Eliminar proyecto</button>
+      </div>
+      <h3>Proyectos guardados</h3>
+      <div class="project-list">${state.projects.map(pr => `<article class="project-card"><h3>${escapeHtml(pr.name)}</h3><p>${escapeHtml(pr.general?.tipoObra || '')} · ${escapeHtml(pr.general?.distrito || pr.general?.ubicacion || 'Sin ubicación')}</p><p>Modificado: ${new Date(pr.updatedAt).toLocaleString('es-PE')}</p><div class="project-actions"><button class="btn small primary" data-open-project="${pr.id}">Abrir</button><button class="btn small" data-duplicate-project="${pr.id}">Duplicar</button><button class="btn small" data-export-project="${pr.id}">Exportar</button></div></article>`).join('') || '<div class="empty">No hay proyectos guardados.</div>'}</div>
+      ${renderDashboardChart(modCounts)}
+      <div class="alert"><strong>Versión funcional final:</strong> se corrigió la duplicación de proyectos y se incorporaron gráficos automáticos en los módulos técnicos. Puede ampliarse a mapas, nube y multiusuario en una segunda fase.</div>
+    `);
+  }
+
+  function renderDashboardChart(modCounts) {
+    const rows = modCounts.filter(([, c]) => c > 0).map(([k, c]) => ({ label: modules.find(m => m.id === k)?.label || k, value: c }));
+    if (!rows.length) return '';
+    return `<div class="chart-panel dashboard-chart"><div class="chart-title"><strong>Resumen gráfico del proyecto</strong><span>Registros por módulo con datos.</span></div>${barChart(rows, 'Cantidad de registros por módulo', 'registros')}</div>`;
+  }
+
+  function renderDatos(p) {
+    return moduleCard('Datos generales del trabajo', 'Registra ubicación, equipo, brigada, sistema de coordenadas y observaciones.', `
+      <div class="grid cols-3">
+        ${field('Nombre del proyecto', 'name', p.name)}
+        ${selectField('Tipo de obra', 'general.tipoObra', p.general.tipoObra, ['Edificación','Vía','Saneamiento','Canal','Drenaje','Catastro','Otro'])}
+        ${selectField('Estado', 'general.estado', p.general.estado, ['Borrador','En campo','En gabinete','Finalizado'])}
+        ${field('Ubicación', 'general.ubicacion', p.general.ubicacion)}
+        ${field('Departamento', 'general.departamento', p.general.departamento)}
+        ${field('Provincia', 'general.provincia', p.general.provincia)}
+        ${field('Distrito', 'general.distrito', p.general.distrito)}
+        ${field('Coordenadas aproximadas', 'general.coordenadas', p.general.coordenadas)}
+        ${field('Fecha', 'general.fecha', p.general.fecha, 'date')}
+        ${field('Hora', 'general.hora', p.general.hora, 'time')}
+        ${field('Responsable', 'general.responsable', p.general.responsable)}
+        ${field('Operador', 'general.operador', p.general.operador)}
+        ${field('Apuntador', 'general.apuntador', p.general.apuntador)}
+        ${field('Croquista', 'general.croquista', p.general.croquista)}
+        ${field('Auxiliares', 'general.auxiliares', p.general.auxiliares)}
+        ${field('Equipo utilizado', 'general.equipo', p.general.equipo)}
+        ${field('Marca/modelo', 'general.equipoMarcaModelo', p.general.equipoMarcaModelo)}
+        ${field('Sistema de coordenadas', 'general.sistema', p.general.sistema)}
+        ${field('Datum', 'general.datum', p.general.datum)}
+        ${field('Zona UTM', 'general.zonaUTM', p.general.zonaUTM)}
+        ${field('Clima', 'general.clima', p.general.clima)}
+      </div>
+      ${textarea('Observaciones generales', 'general.observaciones', p.general.observaciones)}
+      <div class="toolbar"><button class="btn primary" data-main-action="save-now" type="button">Guardar datos generales</button><button class="btn" data-main-action="print-project" type="button">Imprimir ficha</button></div>
+    `);
+  }
+  function renderTableModule(key, title, subtitle, compute) {
+    const p = ensureProject();
+    const cfg = tableConfigs[key];
+    return moduleCard(title, subtitle, renderEditableTable({ rows: moduleRows(p, key), columns: cfg.columns, moduleKey: key, compute: compute || cfg.compute, minWidth: cfg.minWidth || 900 }) + academicBoxFor(key));
+  }
+  function renderPoligonal(p) {
+    const poly = p.modules.poligonal;
+    const comp = calcPoligonalStruct(poly);
+    const extras = `<div class="grid cols-3"><div class="field"><label>Este inicial</label><input data-module-extra="poligonal.startE" type="number" step="0.001" value="${escapeHtml(poly.startE)}"></div><div class="field"><label>Norte inicial</label><input data-module-extra="poligonal.startN" type="number" step="0.001" value="${escapeHtml(poly.startN)}"></div><div class="field"><label>Tipo</label><select data-module-extra="poligonal.closed"><option value="true" ${poly.closed ? 'selected' : ''}>Cerrada / verificar cierre</option><option value="false" ${!poly.closed ? 'selected' : ''}>Abierta</option></select></div></div>`;
+    const summary = `<div class="calc-box"><strong>ΣΔE:</strong> ${fmt(comp.sumE)} m · <strong>ΣΔN:</strong> ${fmt(comp.sumN)} m · <strong>Error lineal:</strong> ${fmt(comp.elc)} m · <strong>Perímetro:</strong> ${fmt(comp.total)} m · <strong>Precisión relativa referencial:</strong> 1/${Number.isFinite(comp.precision) ? fmt(comp.precision, 0) : '∞'}<br><span class="formula">ELC = √((ΣΔE)² + (ΣΔN)²)</span></div>`;
+    return moduleCard('Poligonal con brújula y cinta', 'Calcula proyecciones, coordenadas acumuladas y cierre básico.', renderEditableTable({ rows: comp.rows, columns: tableConfigs.poligonal.columns, moduleKey: 'poligonal', extrasHtml: extras, afterHtml: summary }) + academicBoxFor('poligonal'));
+  }
+  function renderRadiacion(p) {
+    const rad = p.modules.radiacion;
+    const comp = calcRadiacionStruct(rad);
+    const extras = `<div class="grid cols-2"><div class="field"><label>Este estación</label><input data-module-extra="radiacion.stationE" type="number" step="0.001" value="${escapeHtml(rad.stationE)}"></div><div class="field"><label>Norte estación</label><input data-module-extra="radiacion.stationN" type="number" step="0.001" value="${escapeHtml(rad.stationN)}"></div></div>`;
+    return moduleCard('Radiación topográfica', 'Calcula coordenadas de puntos observados desde una estación conocida.', renderEditableTable({ rows: comp.rows, columns: tableConfigs.radiacion.columns, moduleKey: 'radiacion', extrasHtml: extras }) + academicBoxFor('radiacion'));
+  }
+  function renderNivelSimple(p) {
+    const mod = p.modules.nivel_simple;
+    const comp = calcNivelSimpleStruct(mod);
+    const extras = `<div class="grid cols-2"><div class="field"><label>Cota inicial / BM</label><input data-module-extra="nivel_simple.cotaInicial" type="number" step="0.001" value="${escapeHtml(mod.cotaInicial)}"></div><div class="calc-box"><strong>Altura de instrumento:</strong> ${fmt(comp.ai || 0)} m. <span class="formula">AI = Cota conocida + Lectura atrás</span></div></div>`;
+    return moduleCard('Nivelación geométrica simple', 'Calcula altura de instrumento y cotas desde un banco de nivel.', renderEditableTable({ rows: comp.rows, columns: tableConfigs.nivel_simple.columns, moduleKey: 'nivel_simple', extrasHtml: extras }) + academicBoxFor('nivel_simple'));
+  }
+  function renderNivelCompuesta(p) {
+    const mod = p.modules.nivel_compuesta;
+    const comp = calcNivelCompuestaStruct(mod);
+    const extras = `<div class="grid cols-2"><div class="field"><label>Cota inicial / BM</label><input data-module-extra="nivel_compuesta.cotaInicial" type="number" step="0.001" value="${escapeHtml(mod.cotaInicial)}"></div><div class="calc-box"><strong>Diferencia acumulada desde BM:</strong> ${fmt(comp.cierre || 0)} m. <span class="formula">Cota = AI - lectura</span></div></div>`;
+    return moduleCard('Nivelación geométrica compuesta', 'Gestiona puntos de cambio, alturas de instrumento sucesivas y cotas.', renderEditableTable({ rows: comp.rows, columns: tableConfigs.nivel_compuesta.columns, moduleKey: 'nivel_compuesta', extrasHtml: extras }) + academicBoxFor('nivel_compuesta'));
+  }
+  function renderPerfil(p) {
+    return moduleCard('Perfil longitudinal', 'Calcula distancia acumulada, pendiente y corte/relleno básico.', renderEditableTable({ rows: moduleRows(p, 'perfil'), columns: tableConfigs.perfil.columns, moduleKey: 'perfil', compute: tableConfigs.perfil.compute }) + academicBoxFor('perfil'));
+  }
+  function renderProfileChart(rows) {
+    const max = Math.max(...rows.map(r => parseNum(r.cotaTerreno)), ...rows.map(r => parseNum(r.cotaRasante)), 1);
+    const min = Math.min(...rows.map(r => parseNum(r.cotaTerreno)), ...rows.map(r => parseNum(r.cotaRasante)), 0);
+    const w = 900, h = 230, pad = 35;
+    const lastX = Math.max(...rows.map(r => parseNum(r.distanciaAcumulada)), 1);
+    const y = v => h - pad - ((v - min) / Math.max(max - min, 0.001)) * (h - pad * 2);
+    const x = v => pad + (v / lastX) * (w - pad * 2);
+    const ptsT = rows.map(r => `${x(parseNum(r.distanciaAcumulada))},${y(parseNum(r.cotaTerreno))}`).join(' ');
+    const ptsR = rows.map(r => `${x(parseNum(r.distanciaAcumulada))},${y(parseNum(r.cotaRasante))}`).join(' ');
+    return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Perfil longitudinal"><line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" stroke="currentColor" opacity=".4"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h-pad}" stroke="currentColor" opacity=".4"/><polyline points="${ptsT}" fill="none" stroke="#174d80" stroke-width="3"/><polyline points="${ptsR}" fill="none" stroke="#d99a28" stroke-width="3" stroke-dasharray="8 5"/><text x="${pad}" y="22" fill="currentColor">Terreno (azul) · Rasante (dorado)</text></svg></div>`;
+  }
+
+
+  function renderModuleChart(key, rows, computed = {}) {
+    if (!Array.isArray(rows) || rows.length === 0 || key === 'herramientas' || key === 'reportes') return '';
+    const chartMap = {
+      cinta: () => chainageChart(rows, 'Esquema lineal de tramos medidos con cinta'),
+      brujula: () => compassChart(rows, 'Diagrama polar de rumbos / azimuts'),
+      poligonal: () => xyChart(rows.map((r, i) => ({ label: r.punto || String(i + 1), x: parseNum(r.esteCalc), y: parseNum(r.norteCalc) })), 'Croquis planimétrico de la poligonal', { closeShape: true }),
+      radiacion: () => radiationChart(rows, 'Radiación desde estación conocida'),
+      nivel_simple: () => levelChart(rows, 'Perfil altimétrico de nivelación simple'),
+      nivel_compuesta: () => levelChart(rows.filter(r => isNum(r.cota)), 'Perfil altimétrico de nivelación compuesta'),
+      taquimetria: () => taquiChart(rows, 'Perfil taquimétrico (DH acumulada vs cota)'),
+      estacion_total: () => xyChart(rows.map((r, i) => ({ label: r.punto || String(i + 1), x: parseNum(r.este), y: parseNum(r.norte) })), 'Planta de puntos de estación total / coordenadas', { closeShape: false }),
+      perfil: () => guitarProfileChart(rows, 'Perfil longitudinal tipo guitarra'),
+      secciones: () => multiSectionChart(rows, 'Secciones transversales'),
+      replanteo: () => replanteoVectorChart(rows, 'Vectores de replanteo: diseño vs campo')
+    };
+    const svg = chartMap[key] ? chartMap[key]() : '';
+    if (!svg) return '';
+    return `<div class="chart-panel"><div class="chart-title"><div><strong>Gráfico del módulo</strong><span>Replanteado con criterio topográfico y actualizado según los datos de la tabla.</span></div><div class="chart-actions no-print"><button class="btn small" data-chart-action="png" type="button">Exportar PNG</button><button class="btn small" data-chart-action="pdf" type="button">Exportar PDF</button></div></div>${svg}</div>`;
+  }
+  function scaleLinear(value, min, max, outMin, outMax) {
+    if (!Number.isFinite(value)) return outMin;
+    if (Math.abs(max - min) < 1e-9) return (outMin + outMax) / 2;
+    return outMin + ((value - min) / (max - min)) * (outMax - outMin);
+  }
+  function svgLabel(text, x, y, size = 11, anchor = 'start') {
+    return `<text x="${x}" y="${y}" text-anchor="${anchor}" font-size="${size}" fill="currentColor">${escapeHtml(String(text))}</text>`;
+  }
+  function niceTicks(min, max, count = 5) {
+    if (!Number.isFinite(min) || !Number.isFinite(max)) return [];
+    if (min === max) return [min];
+    const span = Math.abs(max - min);
+    const raw = span / Math.max(count, 1);
+    const pow = Math.pow(10, Math.floor(Math.log10(raw)));
+    const norm = raw / pow;
+    const nice = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+    const step = nice * pow;
+    const start = Math.floor(min / step) * step;
+    const end = Math.ceil(max / step) * step;
+    const ticks = [];
+    for (let v = start; v <= end + step * 0.5; v += step) ticks.push(round(v, 6));
+    return ticks;
+  }
+  function barChart(items, title, unit = '') {
+    const data = items.filter(d => Number.isFinite(d.value));
+    if (!data.length) return `<div class="empty-chart">No hay datos suficientes para graficar.</div>`;
+    const w = 920, h = 260, padL = 46, padR = 18, padT = 28, padB = 48;
+    const max = Math.max(...data.map(d => Math.abs(d.value)), 1);
+    const barGap = 8;
+    const bw = Math.max(16, (w - padL - padR - barGap * (data.length - 1)) / data.length);
+    const bars = data.map((d, i) => {
+      const x = padL + i * (bw + barGap);
+      const bh = Math.max(1, Math.abs(d.value) / max * (h - padT - padB));
+      const y = h - padB - bh;
+      return `<rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="6" class="chart-bar"/><text x="${x + bw / 2}" y="${y - 6}" text-anchor="middle" font-size="10" fill="currentColor">${fmt(d.value, 2)}</text><text x="${x + bw / 2}" y="${h - 20}" text-anchor="middle" font-size="10" fill="currentColor">${escapeHtml(d.label)}</text>`;
+    }).join('');
+    return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(title)}"><text x="${padL}" y="18" fill="currentColor" font-size="13" font-weight="700">${escapeHtml(title)} ${unit ? '(' + unit + ')' : ''}</text><line x1="${padL}" y1="${h-padB}" x2="${w-padR}" y2="${h-padB}" class="chart-axis"/><line x1="${padL}" y1="${padT}" x2="${padL}" y2="${h-padB}" class="chart-axis"/>${bars}</svg></div>`;
+  }
+  function chainageChart(rows, title) {
+    const data = rows.map((r, i) => ({ label: `${r.puntoInicial || i + 1}-${r.puntoFinal || ''}`.replace(/-$/,''), value: parseNum(r.distanciaHorizontal || r.distancia) })).filter(d => d.value > 0);
+    if (!data.length) return `<div class="empty-chart">No hay datos suficientes para graficar.</div>`;
+    const w = 920, h = 220, pad = 40;
+    const total = data.reduce((a,b)=>a+b.value,0);
+    let acc = 0;
+    const baselineY = 110;
+    const segs = data.map((d, i) => {
+      const x1 = scaleLinear(acc, 0, total, pad, w-pad);
+      acc += d.value;
+      const x2 = scaleLinear(acc, 0, total, pad, w-pad);
+      const mid = (x1 + x2) / 2;
+      return `<line x1="${x1}" y1="${baselineY}" x2="${x2}" y2="${baselineY}" stroke="#174d80" stroke-width="10" stroke-linecap="round"/><line x1="${x1}" y1="${baselineY-16}" x2="${x1}" y2="${baselineY+16}" class="chart-axis"/><text x="${mid}" y="${baselineY-18}" text-anchor="middle" font-size="11" fill="currentColor">${escapeHtml(d.label)}</text><text x="${mid}" y="${baselineY+30}" text-anchor="middle" font-size="10" fill="currentColor">${fmt(d.value,2)} m</text>`;
+    }).join('');
+    return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(title)}"><text x="${pad}" y="22" font-size="13" font-weight="700" fill="currentColor">${escapeHtml(title)}</text>${segs}<line x1="${pad}" y1="${baselineY-16}" x2="${pad}" y2="${baselineY+16}" class="chart-axis"/><line x1="${w-pad}" y1="${baselineY-16}" x2="${w-pad}" y2="${baselineY+16}" class="chart-axis"/><text x="${pad}" y="${h-16}" font-size="11" fill="currentColor">Longitud acumulada total: ${fmt(total,2)} m</text></svg></div>`;
+  }
+  function compassChart(rows, title) {
+    const data = rows.map((r, i) => ({ label: `${r.estacion || 'E'}-${r.punto || i+1}`, az: isNum(r.azimutCorregido) ? parseNum(r.azimutCorregido) : isNum(r.azimut) ? parseNum(r.azimut) : rumboToAz(r.rumboDeg, r.cuadrante), d: parseNum(r.distancia) })).filter(d => Number.isFinite(d.az));
+    if (!data.length) return `<div class="empty-chart">No hay datos suficientes para graficar.</div>`;
+    const w = 920, h = 300, cx = 220, cy = 155, r = 95;
+    const maxD = Math.max(...data.map(d => d.d || 1), 1);
+    const dirs = [['N',0],['E',90],['S',180],['O',270]];
+    const grid = [0.25,0.5,0.75,1].map(f => `<circle cx="${cx}" cy="${cy}" r="${r*f}" fill="none" stroke="currentColor" opacity=".15"/>`).join('');
+    const axis = dirs.map(([lab,a])=>{ const rad=degToRad(a); const x=cx + r*Math.sin(rad), y=cy - r*Math.cos(rad); return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" class="chart-axis"/>${svgLabel(lab, cx + (r+18)*Math.sin(rad), cy - (r+18)*Math.cos(rad)+4, 12, 'middle')}`; }).join('');
+    const rays = data.map((d, i) => {
+      const rr = (d.d/maxD)*r;
+      const rad = degToRad(d.az);
+      const x = cx + rr*Math.sin(rad);
+      const y = cy - rr*Math.cos(rad);
+      return `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#174d80" stroke-width="2.5" opacity=".9"/><circle cx="${x}" cy="${y}" r="4.5" class="chart-point"/><text x="${x+7}" y="${y-7}" font-size="10" fill="currentColor">${escapeHtml(d.label)} · ${fmt(d.az,1)}°</text>`;
+    }).join('');
+    const legend = data.slice(0,8).map((d,i)=>`<text x="450" y="${42+i*18}" font-size="10" fill="currentColor">${escapeHtml(d.label)}: ${fmt(d.az,1)}° · ${fmt(d.d,2)} m</text>`).join('');
+    return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(title)}"><text x="30" y="24" font-size="13" font-weight="700" fill="currentColor">${escapeHtml(title)}</text>${grid}${axis}${rays}<circle cx="${cx}" cy="${cy}" r="3" fill="#d99a28"/><text x="450" y="24" font-size="11" font-weight="700" fill="currentColor">Lecturas representadas sobre rosa de los vientos</text>${legend}</svg></div>`;
+  }
+  function levelChart(rows, title) {
+    const data = rows.map((r, i) => ({ label: r.punto || `P${i+1}`, cota: parseNum(r.cota), ai: isNum(r.ai) ? parseNum(r.ai) : null })).filter(d => Number.isFinite(d.cota));
+    if (!data.length) return `<div class="empty-chart">No hay datos suficientes para graficar.</div>`;
+    const w = 920, h = 260, pad = 46;
+    const allY = data.flatMap(d => [d.cota, d.ai]).filter(Number.isFinite);
+    const minY = Math.min(...allY), maxY = Math.max(...allY);
+    const pts = data.map((d, i) => ({ ...d, x: scaleLinear(i, 0, Math.max(data.length - 1, 1), pad, w - pad), y: scaleLinear(d.cota, minY, maxY, h - pad, pad), yAI: d.ai===null?null:scaleLinear(d.ai, minY, maxY, h - pad, pad) }));
+    const terrain = pts.map(p => `${p.x},${p.y}`).join(' ');
+    const aiLine = pts.filter(p => p.yAI !== null).map(p => `${p.x},${p.yAI}`).join(' ');
+    const labels = pts.map(p => `<text x="${p.x}" y="${h-14}" text-anchor="middle" font-size="10" fill="currentColor">${escapeHtml(p.label)}</text><text x="${p.x}" y="${p.y-8}" text-anchor="middle" font-size="10" fill="currentColor">${fmt(p.cota,2)}</text>`).join('');
+    return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(title)}"><text x="${pad}" y="22" fill="currentColor" font-size="13" font-weight="700">${escapeHtml(title)}</text><line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" class="chart-axis"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h-pad}" class="chart-axis"/><polyline points="${terrain}" fill="none" class="chart-line"/>${aiLine ? `<polyline points="${aiLine}" fill="none" class="chart-line accent" stroke-dasharray="8 6"/>` : ''}${pts.map(p=>`<circle cx="${p.x}" cy="${p.y}" r="4" class="chart-point"/>`).join('')}${labels}<text x="${w-240}" y="24" font-size="11" fill="currentColor">Cota: azul ${aiLine ? '· AI: dorado' : ''}</text></svg></div>`;
+  }
+  function taquiChart(rows, title) {
+    let acc = 0;
+    const data = rows.map((r, i) => {
+      const dh = parseNum(r.distanciaHorizontal);
+      acc += dh;
+      return { label: r.punto || `P${i+1}`, x: acc, y: parseNum(r.cotaPunto), dh };
+    }).filter(d => Number.isFinite(d.y));
+    if (!data.length) return `<div class="empty-chart">No hay datos suficientes para graficar.</div>`;
+    const w = 920, h = 270, pad = 46;
+    const minX = 0, maxX = Math.max(...data.map(d=>d.x), 1), minY = Math.min(...data.map(d=>d.y)), maxY = Math.max(...data.map(d=>d.y));
+    const pts = data.map(d => ({ ...d, sx: scaleLinear(d.x, minX, maxX, pad, w-pad), sy: scaleLinear(d.y, minY, maxY, h-pad, pad) }));
+    const poly = pts.map(p=>`${p.sx},${p.sy}`).join(' ');
+    const stems = pts.map(p=>`<line x1="${p.sx}" y1="${h-pad}" x2="${p.sx}" y2="${p.sy}" stroke="#d99a28" opacity=".55"/>`).join('');
+    const labels = pts.map((p,i)=>(i % Math.ceil(pts.length/6)===0 || i===pts.length-1)?`<text x="${p.sx}" y="${h-14}" text-anchor="middle" font-size="10" fill="currentColor">${escapeHtml(p.label)}</text>`:'').join('');
+    return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(title)}"><text x="${pad}" y="22" fill="currentColor" font-size="13" font-weight="700">${escapeHtml(title)}</text><line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" class="chart-axis"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h-pad}" class="chart-axis"/>${stems}<polyline points="${poly}" fill="none" class="chart-line"/>${pts.map(p=>`<circle cx="${p.sx}" cy="${p.sy}" r="4.2" class="chart-point"/><text x="${p.sx}" y="${p.sy-8}" text-anchor="middle" font-size="10" fill="currentColor">${fmt(p.y,2)}</text>`).join('')}${labels}<text x="${w-210}" y="24" font-size="11" fill="currentColor">X: DH acumulada · Y: cota calculada</text></svg></div>`;
+  }
+  function xyChart(items, title, opts = {}) {
+    const data = items.filter(d => Number.isFinite(d.x) && Number.isFinite(d.y));
+    if (!data.length) return `<div class="empty-chart">No hay coordenadas suficientes para graficar.</div>`;
+    const w = 920, h = 300, pad = 48;
+    let minX = Math.min(...data.map(d => d.x)), maxX = Math.max(...data.map(d => d.x));
+    let minY = Math.min(...data.map(d => d.y)), maxY = Math.max(...data.map(d => d.y));
+    const mx = Math.max((maxX - minX) * 0.08, 1), my = Math.max((maxY - minY) * 0.08, 1);
+    minX -= mx; maxX += mx; minY -= my; maxY += my;
+    const pts = data.map(d => ({ ...d, sx: scaleLinear(d.x, minX, maxX, pad, w - pad), sy: scaleLinear(d.y, minY, maxY, h - pad, pad) }));
+    const polyPoints = pts.map(p => `${p.sx},${p.sy}`).join(' ');
+    const poly = `<polyline points="${polyPoints}${opts.closeShape && pts.length > 2 ? ' ' + pts[0].sx + ',' + pts[0].sy : ''}" fill="none" class="chart-line"/>`;
+    const nodes = pts.map((p, i) => `<circle cx="${p.sx}" cy="${p.sy}" r="${i===0?5.5:4.5}" fill="${i===0?'#2f855a':'#d99a28'}" stroke="#0b2a4a" stroke-width="1.5"/><text x="${p.sx + 7}" y="${p.sy - 7}" font-size="10" fill="currentColor">${escapeHtml(p.label)}</text>`).join('');
+    const xticks = niceTicks(minX, maxX, 4).map(t=>`<line x1="${scaleLinear(t,minX,maxX,pad,w-pad)}" y1="${pad}" x2="${scaleLinear(t,minX,maxX,pad,w-pad)}" y2="${h-pad}" stroke="currentColor" opacity=".07"/><text x="${scaleLinear(t,minX,maxX,pad,w-pad)}" y="${h-10}" text-anchor="middle" font-size="10" fill="currentColor">${fmt(t,0)}</text>`).join('');
+    const yticks = niceTicks(minY, maxY, 4).map(t=>`<line x1="${pad}" y1="${scaleLinear(t,minY,maxY,h-pad,pad)}" x2="${w-pad}" y2="${scaleLinear(t,minY,maxY,h-pad,pad)}" stroke="currentColor" opacity=".07"/><text x="${pad-8}" y="${scaleLinear(t,minY,maxY,h-pad,pad)+4}" text-anchor="end" font-size="10" fill="currentColor">${fmt(t,0)}</text>`).join('');
+    return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(title)}"><text x="${pad}" y="22" fill="currentColor" font-size="13" font-weight="700">${escapeHtml(title)}</text>${xticks}${yticks}<line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" class="chart-axis"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h-pad}" class="chart-axis"/>${poly}${nodes}<text x="${w-120}" y="${h-10}" font-size="10" fill="currentColor">Este</text><text x="12" y="${pad}" font-size="10" fill="currentColor">Norte</text></svg></div>`;
+  }
+  function radiationChart(rows, title) {
+    const data = rows.map((r, i) => ({ label: r.punto || `P${i+1}`, x: parseNum(r.este), y: parseNum(r.norte) })).filter(d => Number.isFinite(d.x) && Number.isFinite(d.y));
+    if (!data.length) return `<div class="empty-chart">No hay coordenadas suficientes para graficar.</div>`;
+    const stationX = data.reduce((a,b)=>a+b.x,0)/data.length;
+    const stationY = data.reduce((a,b)=>a+b.y,0)/data.length;
+    const w = 920, h = 300, pad = 48;
+    let minX = Math.min(...data.map(d => d.x), stationX), maxX = Math.max(...data.map(d => d.x), stationX);
+    let minY = Math.min(...data.map(d => d.y), stationY), maxY = Math.max(...data.map(d => d.y), stationY);
+    const mx = Math.max((maxX - minX) * 0.1, 1), my = Math.max((maxY - minY) * 0.1, 1);
+    minX -= mx; maxX += mx; minY -= my; maxY += my;
+    const sx = scaleLinear(stationX, minX, maxX, pad, w-pad), sy = scaleLinear(stationY, minY, maxY, h-pad, pad);
+    const pts = data.map(d => ({ ...d, px: scaleLinear(d.x, minX, maxX, pad, w-pad), py: scaleLinear(d.y, minY, maxY, h-pad, pad) }));
+    const rays = pts.map(p=>`<line x1="${sx}" y1="${sy}" x2="${p.px}" y2="${p.py}" stroke="#174d80" opacity=".85" stroke-width="2"/><circle cx="${p.px}" cy="${p.py}" r="4.2" class="chart-point"/><text x="${p.px+7}" y="${p.py-7}" font-size="10" fill="currentColor">${escapeHtml(p.label)}</text>`).join('');
+    return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(title)}"><text x="${pad}" y="22" fill="currentColor" font-size="13" font-weight="700">${escapeHtml(title)}</text><line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" class="chart-axis"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h-pad}" class="chart-axis"/><circle cx="${sx}" cy="${sy}" r="6" fill="#2f855a" stroke="#0b2a4a" stroke-width="1.5"/><text x="${sx+8}" y="${sy-8}" font-size="10" fill="currentColor">Estación</text>${rays}</svg></div>`;
+  }
+  function guitarProfileChart(rows, title) {
+    const data = rows.map((r, i) => ({
+      pk: r.progresiva || String(i+1),
+      x: parseNum(r.distanciaAcumulada),
+      terr: parseNum(r.cotaTerreno),
+      ras: parseNum(r.cotaRasante),
+      tub: isNum(r.cotaTuberia) ? parseNum(r.cotaTuberia) : null,
+      diff: isNum(r.diferencia) ? parseNum(r.diferencia) : parseNum(r.cotaTerreno) - parseNum(r.cotaRasante),
+      pend: parseNum(r.pendiente),
+      obs: r.observacion || ''
+    })).filter(d => Number.isFinite(d.terr) || Number.isFinite(d.ras));
+    if (!data.length) return `<div class="empty-chart">No hay datos suficientes para graficar.</div>`;
+    const w = 960, h = 420, padL = 60, padR = 18, top = 34, profH = 210, bandTop = 258, bandBottom = 404;
+    const maxX = Math.max(...data.map(d=>d.x), 1);
+    const allY = data.flatMap(d => [d.terr, d.ras, d.tub]).filter(Number.isFinite);
+    let minY = Math.min(...allY), maxY = Math.max(...allY);
+    const marginY = Math.max((maxY - minY) * 0.12, 0.5); minY -= marginY; maxY += marginY;
+    const x = v => scaleLinear(v, 0, maxX, padL, w-padR);
+    const y = v => scaleLinear(v, minY, maxY, top+profH, top);
+    const gridY = niceTicks(minY, maxY, 5).map(t=>`<line x1="${padL}" y1="${y(t)}" x2="${w-padR}" y2="${y(t)}" stroke="currentColor" opacity=".08"/><text x="${padL-8}" y="${y(t)+4}" text-anchor="end" font-size="10" fill="currentColor">${fmt(t,2)}</text>`).join('');
+    const terrain = data.map(d=>`${x(d.x)},${y(d.terr)}`).join(' ');
+    const rasante = data.map(d=>`${x(d.x)},${y(d.ras)}`).join(' ');
+    const tuberia = data.filter(d=>Number.isFinite(d.tub)).map(d=>`${x(d.x)},${y(d.tub)}`).join(' ');
+    const fill = terrain + ' ' + data.slice().reverse().map(d=>`${x(d.x)},${y(d.ras)}`).join(' ');
+    const verticals = data.map(d=>`<line x1="${x(d.x)}" y1="${top}" x2="${x(d.x)}" y2="${bandBottom}" stroke="currentColor" opacity=".12"/>`).join('');
+    const labels = data.map(d=>`<text x="${x(d.x)}" y="${bandTop+18}" text-anchor="middle" font-size="9.5" fill="currentColor">${escapeHtml(d.pk)}</text><text x="${x(d.x)}" y="${bandTop+36}" text-anchor="middle" font-size="9.5" fill="currentColor">${fmt(d.terr,2)}</text><text x="${x(d.x)}" y="${bandTop+54}" text-anchor="middle" font-size="9.5" fill="currentColor">${fmt(d.ras,2)}</text><text x="${x(d.x)}" y="${bandTop+72}" text-anchor="middle" font-size="9.5" fill="currentColor">${Number.isFinite(d.tub) ? fmt(d.tub,2) : '-'}</text><text x="${x(d.x)}" y="${bandTop+90}" text-anchor="middle" font-size="9.5" fill="currentColor">${fmt(d.diff,2)}</text><text x="${x(d.x)}" y="${bandTop+108}" text-anchor="middle" font-size="9.5" fill="currentColor">${fmt(d.pend,2)}</text><text x="${x(d.x)}" y="${bandTop+126}" text-anchor="middle" font-size="9" fill="currentColor">${escapeHtml(String(d.obs).slice(0,12) || '-')}</text>`).join('');
+    const bandLines = [0,18,36,54,72,90,108,126,144].map(v=>`<line x1="${padL}" y1="${bandTop+v}" x2="${w-padR}" y2="${bandTop+v}" stroke="currentColor" opacity=".2"/>`).join('');
+    const rowNames = [['PK',18],['Terr. nat.',36],['Rasante',54],['Tubería',72],['Cota roja',90],['Pend %',108],['Observ.',126]].map(([lab,yy])=>`<text x="${padL-8}" y="${bandTop+yy}" text-anchor="end" font-size="9.5" font-weight="700" fill="currentColor">${lab}</text>`).join('');
+    return `<div class="chart" style="height:420px"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(title)}"><text x="${padL}" y="20" fill="currentColor" font-size="13" font-weight="700">${escapeHtml(title)}</text>${gridY}<line x1="${padL}" y1="${top+profH}" x2="${w-padR}" y2="${top+profH}" class="chart-axis"/><line x1="${padL}" y1="${top}" x2="${padL}" y2="${top+profH}" class="chart-axis"/>${verticals}<polygon points="${fill}" fill="#174d80" opacity=".08"/><polyline points="${terrain}" fill="none" class="chart-line"/><polyline points="${rasante}" fill="none" class="chart-line accent" stroke-dasharray="8 6"/>${tuberia ? `<polyline points="${tuberia}" fill="none" stroke="#2f855a" stroke-width="3" stroke-dasharray="5 4"/>` : ''}${data.map(d=>`<circle cx="${x(d.x)}" cy="${y(d.terr)}" r="3.5" fill="#174d80"/><circle cx="${x(d.x)}" cy="${y(d.ras)}" r="3.2" fill="#d99a28"/>${Number.isFinite(d.tub) ? `<circle cx="${x(d.x)}" cy="${y(d.tub)}" r="3.1" fill="#2f855a"/>` : ''}`).join('')}<rect x="${padL}" y="${bandTop}" width="${w-padL-padR}" height="144" fill="none" stroke="currentColor" opacity=".25"/>${bandLines}${rowNames}${labels}<text x="${w-315}" y="20" font-size="10.5" fill="currentColor">Terreno natural: azul · Rasante de proyecto: dorado · Tubería: verde · Formato tipo guitarra</text></svg></div>`;
+  }
+  function multiSectionChart(rows, title) {
+    const groups = {};
+    rows.forEach((r, i) => {
+      const key = r.progresiva || `Grupo ${i+1}`;
+      (groups[key] ||= []).push({ label: r.lado || String(i+1), x: parseNum(r.offset), y: parseNum(r.cotaTerreno), yp: parseNum(r.cotaProyecto) });
+    });
+    const entries = Object.entries(groups).slice(0,4).map(([pk, arr]) => {
+      const data = arr.filter(d => Number.isFinite(d.x) && Number.isFinite(d.y)).sort((a,b)=>a.x-b.x);
+      if (!data.length) return '';
+      const w = 430, h = 240, pad = 44;
+      const valsY = data.flatMap(d=>[d.y,d.yp]).filter(Number.isFinite);
+      let minX = Math.min(...data.map(d=>d.x)), maxX = Math.max(...data.map(d=>d.x));
+      let minY = Math.min(...valsY), maxY = Math.max(...valsY);
+      if (minX === maxX) { minX -= 1; maxX += 1; }
+      if (minY === maxY) { minY -= 1; maxY += 1; }
+      const p1 = data.map(d=>`${scaleLinear(d.x,minX,maxX,pad,w-pad)},${scaleLinear(d.y,minY,maxY,h-pad,pad)}`).join(' ');
+      const p2 = data.map(d=>`${scaleLinear(d.x,minX,maxX,pad,w-pad)},${scaleLinear(d.yp,minY,maxY,h-pad,pad)}`).join(' ');
+      const step = Math.max(1, Math.ceil(data.length / 5));
+      const labels = data.map((d,i)=> (i % step === 0 || i===data.length-1) ? `<text x="${scaleLinear(d.x,minX,maxX,pad,w-pad)}" y="${h-12}" text-anchor="middle" font-size="9.5" fill="currentColor">${fmt(d.x,1)}</text>` : '').join('');
+      return `<div class="chart" style="height:240px"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Sección ${escapeHtml(pk)}"><text x="${pad}" y="20" fill="currentColor" font-size="12" font-weight="700">Prog. ${escapeHtml(pk)}</text><line x1="${pad}" y1="${h-pad}" x2="${w-pad}" y2="${h-pad}" class="chart-axis"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${h-pad}" class="chart-axis"/><polyline points="${p1}" fill="none" class="chart-line"/><polyline points="${p2}" fill="none" class="chart-line accent" stroke-dasharray="8 6"/>${labels}<text x="${w-145}" y="20" font-size="10" fill="currentColor">Terreno / Proyecto</text><text x="${w/2}" y="${h-26}" text-anchor="middle" font-size="9.5" fill="currentColor">Offsets (m)</text></svg></div>`;
+    }).join('');
+    return `<div><div class="chart-title" style="margin-bottom:8px"><strong>${escapeHtml(title)}</strong><span>Se muestran hasta 4 progresivas</span></div><div class="grid cols-2">${entries || '<div class="empty-chart">No hay datos suficientes para graficar.</div>'}</div></div>`;
+  }
+  function replanteoVectorChart(rows, title) {
+    const data = rows.map((r, i) => ({ label: r.punto || `P${i+1}`, de: isNum(r.deltaE) ? parseNum(r.deltaE) : parseNum(r.esteCampo) - parseNum(r.esteDiseno), dn: isNum(r.deltaN) ? parseNum(r.deltaN) : parseNum(r.norteCampo) - parseNum(r.norteDiseno) })).filter(d => Number.isFinite(d.de) && Number.isFinite(d.dn));
+    if (!data.length) return `<div class="empty-chart">No hay datos suficientes para graficar.</div>`;
+    const w = 920, h = 300, pad = 48;
+    const maxAbs = Math.max(...data.flatMap(d => [Math.abs(d.de), Math.abs(d.dn)]), 0.01) * 1.2;
+    const x = v => scaleLinear(v, -maxAbs, maxAbs, pad, w-pad);
+    const y = v => scaleLinear(v, -maxAbs, maxAbs, h-pad, pad);
+    const grid = niceTicks(-maxAbs, maxAbs, 4).map(t=>`<line x1="${x(t)}" y1="${pad}" x2="${x(t)}" y2="${h-pad}" stroke="currentColor" opacity=".08"/><line x1="${pad}" y1="${y(t)}" x2="${w-pad}" y2="${y(t)}" stroke="currentColor" opacity=".08"/>`).join('');
+    const originX = x(0), originY = y(0);
+    const arrows = data.map(d=>`<line x1="${originX}" y1="${originY}" x2="${x(d.de)}" y2="${y(d.dn)}" stroke="#174d80" stroke-width="2.3" marker-end="url(#arrow)"/><circle cx="${x(d.de)}" cy="${y(d.dn)}" r="4.3" class="chart-point"/><text x="${x(d.de)+7}" y="${y(d.dn)-7}" font-size="10" fill="currentColor">${escapeHtml(d.label)} (${fmt(d.de,3)}, ${fmt(d.dn,3)})</text>`).join('');
+    return `<div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="${escapeHtml(title)}"><defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#174d80"/></marker></defs><text x="${pad}" y="22" fill="currentColor" font-size="13" font-weight="700">${escapeHtml(title)}</text>${grid}<line x1="${pad}" y1="${originY}" x2="${w-pad}" y2="${originY}" class="chart-axis"/><line x1="${originX}" y1="${pad}" x2="${originX}" y2="${h-pad}" class="chart-axis"/>${arrows}<text x="${w-120}" y="${originY-8}" font-size="10" fill="currentColor">ΔE</text><text x="${originX+6}" y="${pad+10}" font-size="10" fill="currentColor">ΔN</text></svg></div>`;
+  }
+  function academicBoxFor(key) {
+    const map = {
+      cinta: 'Revise si la distancia medida es inclinada. Para trabajo profesional, aplique correcciones según equipo y especificación.',
+      brujula: 'Evite cercanía a metales, vehículos, líneas eléctricas y estructuras que produzcan atracción local.',
+      poligonal: 'La corrección de cierre aquí es académica. Las tolerancias reales dependen del expediente y precisión requerida.',
+      radiacion: 'Verifique orientación de estación y azimut inicial antes de radiar puntos.',
+      nivel_simple: 'Mantenga distancias de visual equilibradas cuando la precisión lo requiera.',
+      nivel_compuesta: 'Todo punto de cambio debe ser estable y claramente identificado en campo.',
+      taquimetria: 'Configure la calculadora en grados. Verifique K y C del instrumento.',
+      estacion_total: 'Los formatos importados varían por marca. Revise el orden Este/Norte antes de usar resultados.',
+      perfil: 'El perfil es referencial. Para diseño final debe contrastarse con expediente y software técnico.',
+      secciones: 'Las áreas de corte/relleno deben calcularse con el método y precisión exigidos por el proyecto.',
+      replanteo: 'No se aplican tolerancias automáticas porque deben venir del expediente técnico o norma aplicable.'
+    };
+    return `<div class="alert"><strong>Nota didáctica:</strong> ${map[key] || 'Revise datos, fórmulas y resultados antes de usar en campo.'}</div>`;
+  }
+  function renderHerramientas() {
+    return moduleCard('Herramientas rápidas de campo', 'Conversores y calculadoras auxiliares para celular o escritorio.', `
+      <div class="grid cols-3">
+        <div class="card compact"><h3>Rumbo → Azimut</h3><div class="grid"><input id="toolRumbo" type="number" step="0.0001" placeholder="Ángulo de rumbo"><select id="toolCuadrante"><option>NE</option><option>SE</option><option>SW</option><option>NW</option></select><button class="btn primary" data-tool="rumboAz">Calcular</button><div id="toolRumboOut" class="calc-box"></div></div></div>
+        <div class="card compact"><h3>Azimut → Rumbo</h3><div class="grid"><input id="toolAz" type="number" step="0.0001" placeholder="Azimut en grados"><button class="btn primary" data-tool="azRumbo">Calcular</button><div id="toolAzOut" class="calc-box"></div></div></div>
+        <div class="card compact"><h3>Pendiente</h3><div class="grid"><input id="toolDz" type="number" step="0.001" placeholder="Desnivel"><input id="toolDh" type="number" step="0.001" placeholder="Distancia horizontal"><button class="btn primary" data-tool="pendiente">Calcular</button><div id="toolPendOut" class="calc-box"></div></div></div>
+        <div class="card compact"><h3>Distancia y azimut entre coordenadas</h3><div class="grid"><input id="e1" type="number" placeholder="E1"><input id="n1" type="number" placeholder="N1"><input id="e2" type="number" placeholder="E2"><input id="n2" type="number" placeholder="N2"><button class="btn primary" data-tool="coord">Calcular</button><div id="toolCoordOut" class="calc-box"></div></div></div>
+        <div class="card compact"><h3>Área por coordenadas</h3><p>Ingrese pares E,N separados por línea. Ej.: 500000,8665000</p><textarea id="toolArea" placeholder="E,N&#10;E,N&#10;E,N"></textarea><button class="btn primary" data-tool="area">Calcular área</button><div id="toolAreaOut" class="calc-box"></div></div>
+        <div class="card compact"><h3>DMS ↔ Decimal</h3><div class="grid"><input id="deg" type="number" placeholder="Grados"><input id="min" type="number" placeholder="Minutos"><input id="sec" type="number" placeholder="Segundos"><button class="btn primary" data-tool="dms">A decimal</button><input id="decDeg" type="number" placeholder="Decimal"><button class="btn" data-tool="decimalDms">A DMS</button><div id="toolDmsOut" class="calc-box"></div></div></div>
+      </div>`);
+  }
+  function renderReportes(p) {
+    return moduleCard('Reportes y respaldos', 'Genera reportes imprimibles y exporta respaldos completos.', `
+      <div class="grid cols-3">
+        <button class="btn primary" data-main-action="print-project" type="button">Reporte completo / PDF</button>
+        <button class="btn" data-main-action="export-project" type="button">Exportar respaldo JSON</button>
+        <button class="btn" data-main-action="import-project" type="button">Importar respaldo JSON</button>
+      </div>
+      <div class="alert"><strong>Recomendación:</strong> exporte un respaldo JSON al terminar cada jornada de campo. Para PDF use el botón imprimir y seleccione “Guardar como PDF”.</div>
+      <h3>Resumen del proyecto</h3>
+      <div class="table-wrap"><table><tbody>${Object.entries(p.general).map(([k,v])=>`<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`).join('')}</tbody></table></div>`);
+  }
+
+  function attachDynamicHandlers(root) {
+    bindGeneralInputs(root, activeProject(), '');
+    attachTableHandlers(root);
+    if (root.dataset.dynamicHandlersBound === '1') return;
+    root.dataset.dynamicHandlersBound = '1';
+    root.addEventListener('input', e => {
+      const extra = e.target.closest('[data-module-extra]');
+      if (!extra) return;
+      setModuleExtra(extra.dataset.moduleExtra, extra.value);
+    });
+    root.addEventListener('change', e => {
+      const extra = e.target.closest('[data-module-extra]');
+      if (!extra) return;
+      setModuleExtra(extra.dataset.moduleExtra, extra.value === 'true' ? true : extra.value === 'false' ? false : extra.value);
+      render();
+    });
+    root.addEventListener('click', async e => {
+      const main = e.target.closest('[data-main-action]');
+      if (main) handleMainAction(main.dataset.mainAction);
+      const open = e.target.closest('[data-open-project]');
+      if (open) { state.activeId = open.dataset.openProject; state.module = 'datos'; render(); }
+      const dup = e.target.closest('[data-duplicate-project]');
+      if (dup) duplicateProject(dup.dataset.duplicateProject);
+      const exp = e.target.closest('[data-export-project]');
+      if (exp) exportProject(exp.dataset.exportProject);
+      const tool = e.target.closest('[data-tool]');
+      if (tool) handleTool(tool.dataset.tool);
+      const chartBtn = e.target.closest('[data-chart-action]');
+      if (chartBtn) handleChartAction(chartBtn.dataset.chartAction, chartBtn.closest('.chart-panel'));
+    });
+  }
+  function setModuleExtra(path, value) {
+    const p = activeProject(); if (!p) return;
+    const parts = path.split('.');
+    let ref = p.modules;
+    while (parts.length > 1) {
+      const part = parts.shift();
+      ref = ref[part];
+    }
+    ref[parts[0]] = value;
+    scheduleSave();
+  }
+
+  async function duplicateProject(projectId = state.activeId) {
+    const src = state.projects.find(x => x.id === projectId) || activeProject();
+    if (!src) {
+      alert('No hay un proyecto activo para duplicar.');
+      return;
+    }
+    const copy = deepClone(src);
+    copy.id = uid();
+    copy.name = `${src.name || 'Proyecto'} - copia`;
+    copy.createdAt = nowISO();
+    copy.updatedAt = nowISO();
+    state.projects = state.projects.filter(x => x.id !== copy.id);
+    state.projects.unshift(copy);
+    state.activeId = copy.id;
+    await dbPut(copy);
+    await loadProjects(false);
+    state.activeId = copy.id;
+    $('#saveStatus').textContent = 'Proyecto duplicado';
+    render();
+  }
+
+  async function handleMainAction(action) {
+    if (action === 'new-project') { const p = defaultProject(); p.name = prompt('Nombre del proyecto:', p.name) || p.name; state.projects.push(p); state.activeId = p.id; await dbPut(p); render(); }
+    if (action === 'duplicate-project') await duplicateProject();
+    if (action === 'delete-project') { const p = activeProject(); if (p && confirm('¿Eliminar el proyecto activo?')) { await dbDelete(p.id); state.projects = state.projects.filter(x => x.id !== p.id); state.activeId = state.projects[0]?.id || null; render(); } }
+    if (action === 'export-project') exportProject(activeProject()?.id);
+    if (action === 'import-project') importProjectJSON();
+    if (action === 'save-now') { await dbPut(activeProject()); await loadProjects(false); renderProjectSelect(); $('#saveStatus').textContent = 'Guardado manual'; }
+    if (action === 'print-project') printProject();
+  }
+  function exportProject(id) {
+    const p = state.projects.find(x => x.id === id); if (!p) return;
+    download(`${safeName(p.name)}_respaldo_topotaqui.json`, JSON.stringify(p, null, 2), 'application/json;charset=utf-8');
+  }
+  function importProjectJSON() {
+    const input = $('#fileInput');
+    input.accept = '.json';
+    input.onchange = async () => {
+      const file = input.files[0]; if (!file) return;
+      try {
+        const p = JSON.parse(await file.text());
+        p.id = p.id || uid(); p.updatedAt = nowISO(); p.createdAt = p.createdAt || nowISO();
+        state.projects = state.projects.filter(x => x.id !== p.id).concat(p); state.activeId = p.id; await dbPut(p); render();
+      } catch (err) { alert('No se pudo importar el JSON.'); }
+      input.value = '';
+    };
+    input.click();
+  }
+  function handleTool(tool) {
+    if (tool === 'rumboAz') { const az = rumboToAz($('#toolRumbo').value, $('#toolCuadrante').value); $('#toolRumboOut').innerHTML = `<strong>Azimut:</strong> ${fmt(az,4)}°`; }
+    if (tool === 'azRumbo') { const r = azToRumbo($('#toolAz').value); $('#toolAzOut').innerHTML = `<strong>Rumbo:</strong> ${fmt(r.deg,4)}° ${r.q}`; }
+    if (tool === 'pendiente') { const dz = parseNum($('#toolDz').value), dh = parseNum($('#toolDh').value); const p = dh ? dz / dh * 100 : 0; $('#toolPendOut').innerHTML = `<strong>Pendiente:</strong> ${fmt(p,3)} %`; }
+    if (tool === 'coord') { const e1=parseNum($('#e1').value),n1=parseNum($('#n1').value),e2=parseNum($('#e2').value),n2=parseNum($('#n2').value); const de=e2-e1,dn=n2-n1,d=Math.sqrt(de*de+dn*dn),az=normAz(radToDeg(Math.atan2(de,dn))); $('#toolCoordOut').innerHTML = `<strong>Distancia:</strong> ${fmt(d)} m<br><strong>Azimut:</strong> ${fmt(az,4)}°`; }
+    if (tool === 'area') { const pts=$('#toolArea').value.trim().split(/\n+/).map(l=>l.split(/[;,\s]+/).map(parseNum)).filter(a=>a.length>=2); let s=0; pts.forEach((p,i)=>{ const q=pts[(i+1)%pts.length]; s += p[0]*q[1]-p[1]*q[0]; }); $('#toolAreaOut').innerHTML = `<strong>Área:</strong> ${fmt(Math.abs(s)/2)} m² · ${fmt(Math.abs(s)/20000,4)} ha`; }
+    if (tool === 'dms') { const dec = parseNum($('#deg').value) + parseNum($('#min').value)/60 + parseNum($('#sec').value)/3600; $('#toolDmsOut').innerHTML = `<strong>Decimal:</strong> ${fmt(dec,6)}°`; }
+    if (tool === 'decimalDms') { const v=parseNum($('#decDeg').value); const d=Math.trunc(v), m=Math.trunc((Math.abs(v-d))*60), s=(Math.abs(v-d)*60-m)*60; $('#toolDmsOut').innerHTML = `<strong>DMS:</strong> ${d}° ${m}' ${fmt(s,2)}"`; }
+  }
+  function handleChartAction(action, panel) {
+    const svg = panel?.querySelector('svg');
+    if (!svg) return alert('No se encontró un gráfico para exportar.');
+    const title = panel.querySelector('.chart-title strong')?.textContent || 'grafico_topografia';
+    if (action === 'png') exportChartPNG(svg, title);
+    if (action === 'pdf') exportChartPDF(svg, title);
+  }
+  function exportChartPNG(svg, title) {
+    const serializer = new XMLSerializer();
+    let source = serializer.serializeToString(svg);
+    if (!source.includes('xmlns=')) source = source.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+    const svgBlob = new Blob([source], {type:'image/svg+xml;charset=utf-8'});
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const vb = svg.viewBox.baseVal;
+      const width = (vb && vb.width) || svg.clientWidth || 1000;
+      const height = (vb && vb.height) || svg.clientHeight || 600;
+      canvas.width = width * 2;
+      canvas.height = height * 2;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.scale(2,2);
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(blob => {
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `${safeName(title)}.png`;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(a.href);
+      }, 'image/png');
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  }
+  function exportChartPDF(svg, title) {
+    const serializer = new XMLSerializer();
+    let source = serializer.serializeToString(svg);
+    if (!source.includes('xmlns=')) source = source.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>body{font-family:Arial,sans-serif;padding:24px;background:#fff;color:#111}h1{font-size:18px;margin:0 0 12px;color:#0b2a4a}.wrap{border:1px solid #dbe3ee;border-radius:12px;padding:14px}svg{width:100%;height:auto}</style></head><body><h1>${escapeHtml(title)}</h1><div class="wrap">${source}</div><script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`;
+    const win = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+  }
+  function printCurrentModule() { window.print(); }
+  function printProject() {
+    const p = activeProject(); if (!p) return;
+    const win = window.open('', '_blank');
+    const css = `<style>body{font-family:Arial,sans-serif;padding:24px;color:#111}h1,h2{color:#0b2a4a}table{width:100%;border-collapse:collapse;margin:12px 0}td,th{border:1px solid #bbb;padding:6px;font-size:12px}th{background:#eef3f8;text-align:left}.note{border-left:4px solid #d99a28;padding:10px;background:#fff7e5}</style>`;
+    const sections = Object.keys(tableConfigs).map(key => {
+      const rows = computeForExport(key), cols = exportColumnsFor(key);
+      return `<h2>${escapeHtml(modules.find(m=>m.id===key)?.label || key)}</h2><table><tr>${cols.map(c=>`<th>${escapeHtml(c.label)}</th>`).join('')}</tr>${rows.map(r=>`<tr>${cols.map(c=>`<td>${escapeHtml(r[c.key] ?? '')}</td>`).join('')}</tr>`).join('')}</table>`;
+    }).join('');
+    win.document.write(`<html><head><title>Reporte ${escapeHtml(p.name)}</title>${css}</head><body><h1>${escapeHtml(p.name)}</h1><p class="note">Reporte generado por Practicas de Topografia. Verificar tolerancias con normativa peruana aplicable, expediente técnico y criterio profesional.</p><h2>Datos generales</h2><table>${Object.entries(p.general).map(([k,v])=>`<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`).join('')}</table>${sections}</body></html>`);
+    win.document.close(); win.focus(); setTimeout(()=>win.print(), 500);
+  }
+
+  async function init() {
+    state.db = await openDB();
+    await loadProjects(true);
+    if (!state.projects.length) {
+      const p = defaultProject(); state.projects = [p]; state.activeId = p.id; await dbPut(p);
+    }
+    if (!state.activeId) state.activeId = state.projects[0]?.id;
+    document.documentElement.dataset.theme = state.theme;
+    bindGlobalEvents();
+    render();
+    document.getElementById('app').classList.remove('shell-loading');
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+  function bindGlobalEvents() {
+    $('#menuToggle').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
+    $('#projectSelect').addEventListener('change', e => { state.activeId = e.target.value; render(); });
+    $('#newProjectBtn').addEventListener('click', () => handleMainAction('new-project'));
+    $('#saveBtn').addEventListener('click', () => handleMainAction('save-now'));
+    $('#themeToggle').addEventListener('click', () => { state.theme = state.theme === 'dark' ? 'light' : 'dark'; localStorage.setItem('topotaqui-theme', state.theme); render(); });
+    window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); state.deferredPrompt = e; $('#installBtn').classList.remove('hidden'); });
+    $('#installBtn').addEventListener('click', async () => { if (!state.deferredPrompt) return; state.deferredPrompt.prompt(); await state.deferredPrompt.userChoice; state.deferredPrompt = null; $('#installBtn').classList.add('hidden'); });
+  }
+  init();
 })();
